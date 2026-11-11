@@ -12,7 +12,7 @@ const REDACT = [
 ];
 
 /**
- * pino options shared by the API (through nestjs-pino), the worker and
+ * pino options shared by the API (through nestjs-pino) and
  * scripts: JSON lines to stdout, which is all the deployment needs to collect.
  * LOG_LEVEL overrides the level; tests are silent unless it is set.
  */

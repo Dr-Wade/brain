@@ -9,7 +9,6 @@
     "scripts": {
         "dev": "pnpm build:packages && pnpm -r --parallel dev",
         "dev:api": "pnpm --filter @brain/api dev",
-        "dev:worker": "pnpm --filter @brain/worker dev",
         "dev:client": "pnpm --filter @brain/client dev",
         "build": "pnpm -r build",
         "build:packages": "pnpm -r --filter \"./packages/**\" build",

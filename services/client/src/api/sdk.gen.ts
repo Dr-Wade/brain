@@ -2,7 +2,7 @@
 
 import { client } from './client.gen.js';
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client/index.js';
-import type { ClientConfigGetData, ClientConfigGetResponses, TodosCreateData, TodosCreateResponses, TodosListData, TodosListResponses, TodosRemoveData, TodosRemoveResponses, TodosUpdateData, TodosUpdateResponses } from './types.gen.js';
+import type { ClientConfigGetData, ClientConfigGetResponses } from './types.gen.js';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
   /**
@@ -19,25 +19,3 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 };
 
 export const clientConfigGet = <ThrowOnError extends boolean = false>(options?: Options<ClientConfigGetData, ThrowOnError>): RequestResult<ClientConfigGetResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ClientConfigGetResponses, unknown, ThrowOnError>({ url: '/api/config', ...options });
-
-export const todosList = <ThrowOnError extends boolean = false>(options?: Options<TodosListData, ThrowOnError>): RequestResult<TodosListResponses, unknown, ThrowOnError> => (options?.client ?? client).get<TodosListResponses, unknown, ThrowOnError>({ url: '/api/todos', ...options });
-
-export const todosCreate = <ThrowOnError extends boolean = false>(options: Options<TodosCreateData, ThrowOnError>): RequestResult<TodosCreateResponses, unknown, ThrowOnError> => (options.client ?? client).post<TodosCreateResponses, unknown, ThrowOnError>({
-  url: '/api/todos',
-  ...options,
-  headers: {
-    'Content-Type': 'application/json',
-    ...options.headers
-  }
-});
-
-export const todosRemove = <ThrowOnError extends boolean = false>(options: Options<TodosRemoveData, ThrowOnError>): RequestResult<TodosRemoveResponses, unknown, ThrowOnError> => (options.client ?? client).delete<TodosRemoveResponses, unknown, ThrowOnError>({ url: '/api/todos/{id}', ...options });
-
-export const todosUpdate = <ThrowOnError extends boolean = false>(options: Options<TodosUpdateData, ThrowOnError>): RequestResult<TodosUpdateResponses, unknown, ThrowOnError> => (options.client ?? client).patch<TodosUpdateResponses, unknown, ThrowOnError>({
-  url: '/api/todos/{id}',
-  ...options,
-  headers: {
-    'Content-Type': 'application/json',
-    ...options.headers
-  }
-});

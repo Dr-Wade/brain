@@ -13,10 +13,8 @@ allowBuilds:
   '@prisma/engines': true
   esbuild: true
   prisma: true
-  # Usage telemetry, an optional native speed-up for BullMQ, and a Vue 2/3
-  # switch that Vue 3 does not need.
+  # Usage telemetry, and a Vue 2/3 switch that Vue 3 does not need.
   '@scarf/scarf': false
-  msgpackr-extract: false
   vue-demi: false
 
 # A version must be a day old before it is installed: most malicious releases

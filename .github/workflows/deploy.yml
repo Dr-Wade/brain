@@ -32,7 +32,6 @@ jobs:
         with:
           filters: |
             api: ["services/api/**", "packages/**", "pnpm-lock.yaml", "Dockerfile"]
-            worker: ["services/worker/**", "packages/database/**", "packages/logger/**", "packages/queues/**", "pnpm-lock.yaml", "Dockerfile"]
             client: ["services/client/**", "packages/schemas/**", "pnpm-lock.yaml", "Dockerfile"]
 
   publish:
@@ -70,10 +69,10 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       # Fails the job when the deployment itself fails, not only the trigger.
-      # One Actions variable per service: DOKPLOY_API_APP_ID, DOKPLOY_WORKER_APP_ID…
+      # One Actions variable per service: DOKPLOY_API_APP_ID, DOKPLOY_CLIENT_APP_ID.
       - uses: Dr-Wade/dokploy-deploy-action@v1
         with:
           dokploy_url: ${{ vars.DOKPLOY_URL }}
           api_key: ${{ secrets.DOKPLOY_TOKEN }}
-          application_id: ${{ vars[format('DOKPLOY_{0}_APP_ID', matrix.service == 'api' && 'API' || matrix.service == 'worker' && 'WORKER' || 'CLIENT')] }}
+          application_id: ${{ vars[format('DOKPLOY_{0}_APP_ID', matrix.service == 'api' && 'API' || 'CLIENT')] }}
           wait_for_deployment: "true"

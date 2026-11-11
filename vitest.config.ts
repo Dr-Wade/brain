@@ -15,7 +15,7 @@ export default defineConfig({
                 test: {
                     name: "node",
                     environment: "node",
-                    include: ["packages/*/src/**/*.spec.ts", "services/{api,worker}/src/**/*.spec.ts"]
+                    include: ["packages/*/src/**/*.spec.ts", "services/api/src/**/*.spec.ts"]
                 }
             },
             {

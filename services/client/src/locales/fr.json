@@ -5,27 +5,29 @@
     },
     "auth": {
         "signInTitle": "Connexion",
-        "signUpTitle": "Créer un compte",
-        "name": "Nom",
-        "email": "E-mail",
-        "password": "Mot de passe",
-        "passwordHint": "Au moins 10 caractères.",
-        "signIn": "Se connecter",
-        "signUp": "Créer le compte",
-        "toSignUp": "Pas encore de compte ? En créer un",
-        "toSignIn": "Déjà un compte ? Se connecter",
+        "signInLead": "Ce connecteur permet à Claude d'écrire dans le coffre d'Edward et d'y chercher. Seul le compte GitHub d'Edward peut se connecter.",
+        "continueWithGithub": "Continuer avec GitHub",
+        "notAllowed": "Ce compte GitHub n'est pas autorisé ici.",
         "failed": "Cela n'a pas fonctionné : {message}"
     },
-    "todos": {
-        "title": "Tâches",
-        "new": "Nouvelle tâche",
-        "remindAt": "Me le rappeler le",
-        "add": "Ajouter",
-        "empty": "Rien à faire pour l'instant. Ajoutez une première tâche ci-dessus.",
-        "loadFailed": "Les tâches n'ont pas pu être chargées.",
-        "saveFailed": "La modification n'a pas été enregistrée.",
-        "delete": "Supprimer « {title} »",
-        "markDone": "Marquer « {title} » comme faite",
-        "reminder": "Rappel le {date}"
+    "consent": {
+        "title": "Autoriser {client} à accéder à votre coffre ?",
+        "anApp": "cette application",
+        "lead": "Elle pourra :",
+        "capture": "ajouter des idées à la boîte de réception",
+        "read": "chercher et lire vos notes",
+        "issues": "ouvrir des tickets GitHub sur les dépôts configurés",
+        "allow": "Autoriser",
+        "deny": "Refuser"
+    },
+    "home": {
+        "lead": "Vous êtes connecté. Ajoutez le connecteur dans Claude pour noter des idées et chercher dans vos notes, à l'écrit ou à la voix.",
+        "urlLabel": "URL du connecteur",
+        "copy": "Copier l'URL du connecteur",
+        "copied": "Copié",
+        "copyFailed": "Copie impossible : sélectionnez l'URL et copiez-la à la main.",
+        "step1": "Dans Claude (web ou appli), ouvrez Paramètres → Connecteurs → Ajouter un connecteur personnalisé.",
+        "step2": "Collez l'URL ci-dessus et enregistrez.",
+        "step3": "Connectez-vous, avec GitHub ici, puis autorisez l'accès."
     }
 }

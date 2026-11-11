@@ -1,4 +1,4 @@
-# Local Postgres and Redis for development and tests. `pnpm db:up` starts them.
+# Local Postgres for development and tests. `pnpm db:up` starts them.
 name: brain
 
 services:
@@ -14,16 +14,6 @@ services:
       - postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U brain -d brain"]
-      interval: 2s
-      timeout: 3s
-      retries: 20
-
-  redis:
-    image: redis:8-alpine
-    ports:
-      - "${REDIS_PORT:-4694}:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
       interval: 2s
       timeout: 3s
       retries: 20

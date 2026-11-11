@@ -10,7 +10,6 @@ on:
 
 env:
   DATABASE_URL: postgresql://brain:brain@localhost:4693/brain
-  REDIS_URL: redis://localhost:4694
 
 jobs:
   full:
@@ -30,7 +29,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      - name: Start Postgres and Redis
+      - name: Start Postgres
         run: docker compose up -d --wait
 
       - run: pnpm build

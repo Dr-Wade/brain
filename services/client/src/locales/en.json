@@ -5,27 +5,29 @@
     },
     "auth": {
         "signInTitle": "Sign in",
-        "signUpTitle": "Create an account",
-        "name": "Name",
-        "email": "Email",
-        "password": "Password",
-        "passwordHint": "At least 10 characters.",
-        "signIn": "Sign in",
-        "signUp": "Create account",
-        "toSignUp": "No account yet? Create one",
-        "toSignIn": "Already have an account? Sign in",
+        "signInLead": "This connector lets Claude write to and search Edward's vault. Only Edward's GitHub account can sign in.",
+        "continueWithGithub": "Continue with GitHub",
+        "notAllowed": "This GitHub account is not allowed here.",
         "failed": "That did not work: {message}"
     },
-    "todos": {
-        "title": "Todos",
-        "new": "New todo",
-        "remindAt": "Remind me at",
-        "add": "Add",
-        "empty": "Nothing to do yet. Add your first todo above.",
-        "loadFailed": "The todos could not be loaded.",
-        "saveFailed": "The change was not saved.",
-        "delete": "Delete \"{title}\"",
-        "markDone": "Mark \"{title}\" as done",
-        "reminder": "Reminder {date}"
+    "consent": {
+        "title": "Allow {client} into your vault?",
+        "anApp": "this app",
+        "lead": "It will be able to:",
+        "capture": "add ideas to the inbox",
+        "read": "search and read your notes",
+        "issues": "open GitHub issues on the repos you configured",
+        "allow": "Allow",
+        "deny": "Deny"
+    },
+    "home": {
+        "lead": "You are signed in. Add the connector in Claude to capture ideas and search your notes, by text or by voice.",
+        "urlLabel": "Connector URL",
+        "copy": "Copy the connector URL",
+        "copied": "Copied",
+        "copyFailed": "Could not copy: select the URL and copy it by hand.",
+        "step1": "In Claude (web or app), open Settings → Connectors → Add custom connector.",
+        "step2": "Paste the URL above and save.",
+        "step3": "Connect, sign in with GitHub here, and allow access."
     }
 }

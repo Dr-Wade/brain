@@ -10,28 +10,6 @@ export type ClientConfig = {
   sentryDsn: string | null;
 };
 
-export type TodoList = Array<Todo>;
-
-export type Todo = {
-  id: string;
-  title: string;
-  done: boolean;
-  remindAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type TodoCreate = {
-  title: string;
-  remindAt?: string | null;
-};
-
-export type TodoUpdate = {
-  title?: string;
-  done?: boolean;
-  remindAt?: string | null;
-};
-
 export type ClientConfigGetData = {
   body?: never;
   path?: never;
@@ -44,59 +22,3 @@ export type ClientConfigGetResponses = {
 };
 
 export type ClientConfigGetResponse = ClientConfigGetResponses[keyof ClientConfigGetResponses];
-
-export type TodosListData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: '/api/todos';
-};
-
-export type TodosListResponses = {
-  200: TodoList;
-};
-
-export type TodosListResponse = TodosListResponses[keyof TodosListResponses];
-
-export type TodosCreateData = {
-  body: TodoCreate;
-  path?: never;
-  query?: never;
-  url: '/api/todos';
-};
-
-export type TodosCreateResponses = {
-  201: Todo;
-};
-
-export type TodosCreateResponse = TodosCreateResponses[keyof TodosCreateResponses];
-
-export type TodosRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: '/api/todos/{id}';
-};
-
-export type TodosRemoveResponses = {
-  204: void;
-};
-
-export type TodosRemoveResponse = TodosRemoveResponses[keyof TodosRemoveResponses];
-
-export type TodosUpdateData = {
-  body: TodoUpdate;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: '/api/todos/{id}';
-};
-
-export type TodosUpdateResponses = {
-  200: Todo;
-};
-
-export type TodosUpdateResponse = TodosUpdateResponses[keyof TodosUpdateResponses];

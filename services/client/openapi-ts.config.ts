@@ -8,10 +8,10 @@ export default defineConfig({
     output: "src/api",
     plugins: [
         "@hey-api/typescript",
-        // todosList(), todosCreate()…: named from the operationId (`Todos.list`).
+        // healthLive()…: named from the operationId (`Health.live`).
         { name: "@hey-api/sdk", operations: { nesting: "operationId" } },
         "@hey-api/client-fetch",
-        // Query and mutation options for TanStack Query: todosListOptions()…
+        // Query and mutation options for TanStack Query: clientConfigGetOptions()…
         "@tanstack/vue-query"
     ]
 });

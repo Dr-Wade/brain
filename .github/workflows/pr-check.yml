@@ -13,7 +13,6 @@ concurrency:
 
 env:
   DATABASE_URL: postgresql://brain:brain@localhost:4693/brain
-  REDIS_URL: redis://localhost:4694
 
 jobs:
   check:
@@ -55,8 +54,8 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      # Postgres and Redis only for the suites that need them.
-      - name: Start Postgres and Redis
+      # Postgres only for the suites that need it.
+      - name: Start Postgres
         if: steps.changed.outputs.api == 'true'
         run: docker compose up -d --wait && pnpm db:deploy
 

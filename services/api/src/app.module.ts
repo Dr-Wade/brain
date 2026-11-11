@@ -8,9 +8,8 @@ import { AuthModule } from "./auth/auth.module.js";
 import { ClientConfigModule } from "./client-config/client-config.module.js";
 import { ConfigModule } from "./config/app-config.js";
 import { HealthModule } from "./health/health.module.js";
+import { McpModule } from "./mcp/mcp.module.js";
 import { PrismaModule } from "./prisma/prisma.service.js";
-import { RedisModule } from "./queues.module.js";
-import { TodosModule } from "./todos/todos.module.js";
 
 @Module({
     imports: [
@@ -24,11 +23,10 @@ import { TodosModule } from "./todos/todos.module.js";
         }),
         ConfigModule,
         PrismaModule,
-        RedisModule,
         AuthModule,
         HealthModule,
         ClientConfigModule,
-        TodosModule
+        McpModule
     ],
     providers: [{ provide: APP_FILTER, useClass: SentryGlobalFilter }]
 })
