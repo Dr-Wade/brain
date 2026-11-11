@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.env
+*.tsbuildinfo
+packages/database/src/generated/
+playwright-report/
+test-results/

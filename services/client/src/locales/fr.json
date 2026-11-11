@@ -1,0 +1,31 @@
+{
+    "app": {
+        "name": "Starter",
+        "signOut": "Se déconnecter"
+    },
+    "auth": {
+        "signInTitle": "Connexion",
+        "signUpTitle": "Créer un compte",
+        "name": "Nom",
+        "email": "E-mail",
+        "password": "Mot de passe",
+        "passwordHint": "Au moins 10 caractères.",
+        "signIn": "Se connecter",
+        "signUp": "Créer le compte",
+        "toSignUp": "Pas encore de compte ? En créer un",
+        "toSignIn": "Déjà un compte ? Se connecter",
+        "failed": "Cela n'a pas fonctionné : {message}"
+    },
+    "todos": {
+        "title": "Tâches",
+        "new": "Nouvelle tâche",
+        "remindAt": "Me le rappeler le",
+        "add": "Ajouter",
+        "empty": "Rien à faire pour l'instant. Ajoutez une première tâche ci-dessus.",
+        "loadFailed": "Les tâches n'ont pas pu être chargées.",
+        "saveFailed": "La modification n'a pas été enregistrée.",
+        "delete": "Supprimer « {title} »",
+        "markDone": "Marquer « {title} » comme faite",
+        "reminder": "Rappel le {date}"
+    }
+}

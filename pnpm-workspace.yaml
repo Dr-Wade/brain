@@ -1,0 +1,33 @@
+packages:
+  - packages/*
+  - services/*
+
+# `pnpm deploy` (the Dockerfile's pruning step) copies workspace packages into
+# the pruned tree as real directories only with injection on. Without it they
+# stay symlinks into /app/packages and dangle in the runtime image.
+injectWorkspacePackages: true
+
+# Packages allowed to run install scripts; every other one is skipped.
+allowBuilds:
+  '@nestjs/core': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  # Usage telemetry, an optional native speed-up for BullMQ, and a Vue 2/3
+  # switch that Vue 3 does not need.
+  '@scarf/scarf': false
+  msgpackr-extract: false
+  vue-demi: false
+
+# A version must be a day old before it is installed: most malicious releases
+# are caught and unpublished within hours. Our own packages are exempt: we
+# published them, and a config release should be usable the same day.
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - '@drwade/eslint-config'
+
+# Peers declared before TypeScript 7 shipped. It is a port of 6 and checks the
+# same language.
+peerDependencyRules:
+  allowedVersions:
+    typescript: '7'

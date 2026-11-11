@@ -1,0 +1,76 @@
+# The PR check: one job, under two minutes, only what the PR can break.
+# No coverage, no E2E, no images; those run on push (build.yml).
+# See the handbook's ci.md.
+name: PR check
+
+on:
+  pull_request:
+    paths-ignore: ["docs/**", "**/*.md"]
+
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://starter:starter@localhost:4313/starter
+  REDIS_URL: redis://localhost:4314
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: What changed
+        id: changed
+        run: |
+          files=$(git diff --name-only HEAD^1 HEAD)
+          touched () { printf '%s\n' "$files" | grep -qE "$1"; }
+          all=false
+          if touched '^(pnpm-lock\.yaml|pnpm-workspace\.yaml|(.*/)?package\.json|tsconfig[^/]*\.json|eslint\.config\.js|vitest\.config\.ts|\.github/workflows/)'; then all=true; fi
+          # Services import the packages through their build, which Vitest's
+          # import graph cannot follow: a package change runs every test.
+          if touched '^packages/'; then all=true; fi
+          echo "all=$all" >> "$GITHUB_OUTPUT"
+          if [ "$all" = true ] || touched '^services/api/'; then echo "api=true"; else echo "api=false"; fi >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$files" | grep -E '\.(ts|vue|js|mjs|cjs)$' \
+            | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done > "$RUNNER_TEMP/lint.txt" || true
+
+      - name: Lint changed files
+        run: xargs -r -d '\n' pnpm exec eslint --max-warnings 0 --no-warn-ignored -- < "$RUNNER_TEMP/lint.txt"
+
+      - name: Build packages
+        run: pnpm build:packages
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Postgres and Redis only for the suites that need them.
+      - name: Start Postgres and Redis
+        if: steps.changed.outputs.api == 'true'
+        run: docker compose up -d --wait && pnpm db:deploy
+
+      - name: Tests (all)
+        if: steps.changed.outputs.all == 'true'
+        run: pnpm test
+
+      - name: Tests (affected)
+        if: steps.changed.outputs.all != 'true'
+        run: pnpm exec vitest run --changed HEAD^1 --passWithNoTests
+
+      - name: OpenAPI and client SDK are up to date
+        if: steps.changed.outputs.api == 'true'
+        run: |
+          pnpm openapi
+          git diff --exit-code -- services/api/openapi.json services/client/src/api \
+            || { echo "::error::Run 'pnpm openapi' and commit the result."; exit 1; }

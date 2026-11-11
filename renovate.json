@@ -1,0 +1,27 @@
+{
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "description": "Keeps the starter current. A project made from it decides for itself whether to keep this: each Renovate PR runs the PR check.",
+    "extends": ["config:recommended"],
+    "schedule": ["before 7am on monday"],
+    "minimumReleaseAge": "3 days",
+    "rangeStrategy": "bump",
+    "packageRules": [
+        {
+            "description": "One PR a week for everything that is not a major.",
+            "matchUpdateTypes": ["minor", "patch"],
+            "groupName": "minor and patch"
+        },
+        {
+            "description": "PrimeVue 5, @primeuix/themes 3 and primeicons 8 are no longer MIT (PrimeUI licence, key required). Stay on the last MIT majors.",
+            "matchPackageNames": ["primevue", "@primevue/**", "@primeuix/themes", "primeicons"],
+            "matchUpdateTypes": ["major"],
+            "enabled": false
+        },
+        {
+            "description": "The root TypeScript is the one typescript-eslint loads, and it supports < 6.1 only. The workspaces run TypeScript 7.",
+            "matchPackageNames": ["typescript"],
+            "matchFileNames": ["package.json"],
+            "allowedVersions": "<6.1"
+        }
+    ]
+}

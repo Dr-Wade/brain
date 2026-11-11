@@ -1,0 +1,31 @@
+{
+    "app": {
+        "name": "Starter",
+        "signOut": "Sign out"
+    },
+    "auth": {
+        "signInTitle": "Sign in",
+        "signUpTitle": "Create an account",
+        "name": "Name",
+        "email": "Email",
+        "password": "Password",
+        "passwordHint": "At least 10 characters.",
+        "signIn": "Sign in",
+        "signUp": "Create account",
+        "toSignUp": "No account yet? Create one",
+        "toSignIn": "Already have an account? Sign in",
+        "failed": "That did not work: {message}"
+    },
+    "todos": {
+        "title": "Todos",
+        "new": "New todo",
+        "remindAt": "Remind me at",
+        "add": "Add",
+        "empty": "Nothing to do yet. Add your first todo above.",
+        "loadFailed": "The todos could not be loaded.",
+        "saveFailed": "The change was not saved.",
+        "delete": "Delete \"{title}\"",
+        "markDone": "Mark \"{title}\" as done",
+        "reminder": "Reminder {date}"
+    }
+}

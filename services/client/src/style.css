@@ -1,0 +1,6 @@
+@import "tailwindcss";
+@plugin "tailwindcss-primeui";
+
+/* PrimeVue's styles sit in their own layer after Tailwind's base, so utility
+   classes can still override a component (see the cssLayer option in main.ts). */
+@layer theme, base, primevue, components, utilities;
