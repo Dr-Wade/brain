@@ -31,8 +31,10 @@ jobs:
         id: filter
         with:
           filters: |
-            api: ["services/api/**", "packages/**", "pnpm-lock.yaml", "Dockerfile"]
-            client: ["services/client/**", "packages/schemas/**", "pnpm-lock.yaml", "Dockerfile"]
+            # This workflow too: a change to how images are built or named
+            # must publish them again.
+            api: ["services/api/**", "packages/**", "pnpm-lock.yaml", "Dockerfile", ".github/workflows/deploy.yml"]
+            client: ["services/client/**", "packages/schemas/**", "pnpm-lock.yaml", "Dockerfile", ".github/workflows/deploy.yml"]
 
   publish:
     needs: [suite, changes]
@@ -56,6 +58,11 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
+      # Registry names are lower case; the owner may not be (Dr-Wade).
+      - name: Image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v7
         with:
           context: .
@@ -63,8 +70,8 @@ jobs:
           push: true
           build-args: APP_VERSION=${{ github.sha }}
           tags: |
-            ghcr.io/${{ github.repository }}/${{ matrix.service }}:latest
-            ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
