@@ -106,6 +106,15 @@ describe.skipIf(!process.env.DATABASE_URL)("OAuth for the MCP endpoint", () => {
         expect(config.connectorUrl).toBe(resource);
     });
 
+    it("hides the Telegram webhook from anyone without its secret", async () => {
+        const response = await fetch(`${root}/api/telegram/webhook`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": "guess-guess-guess-guess" },
+            body: JSON.stringify({ update_id: 1, message: { message_id: 1, date: 0, chat: { id: 1, type: "private" }, text: "hi" } })
+        });
+        expect(response.status).toBe(404);
+    });
+
     it("keeps session JWTs away from the token endpoint they could be mistaken for", async () => {
         expect((await fetch(`${root}/api/auth/token`)).status).toBe(404);
     });

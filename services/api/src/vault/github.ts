@@ -36,10 +36,10 @@ export class GitHubClient {
      * Creates a file; never overwrites. Answers false when the path is taken,
      * so the caller can pick another name.
      */
-    async createFile (repo: string, input: { path: string; content: string; message: string; branch: string }): Promise<{ created: false } | { created: true; htmlUrl: string }> {
+    async createFile (repo: string, input: { path: string; content: string | Uint8Array; message: string; branch: string }): Promise<{ created: false } | { created: true; htmlUrl: string }> {
         const response = await this.request("PUT", `/repos/${repo}/contents/${encodePath(input.path)}`, {
             message: input.message,
-            content: Buffer.from(input.content, "utf8").toString("base64"),
+            content: toBase64(input.content),
             branch: input.branch
         }, [422]);
         if (response.status === 422) {
@@ -47,6 +47,30 @@ export class GitHubClient {
         }
         const body = await response.json() as { content: { html_url: string } };
         return { created: true, htmlUrl: body.content.html_url };
+    }
+
+    /** A text file and its blob sha at a branch, or null when there is none. */
+    async getFile (repo: string, path: string, branch: string): Promise<{ sha: string; content: string } | null> {
+        const response = await this.request("GET", `/repos/${repo}/contents/${encodePath(path)}?ref=${encodeURIComponent(branch)}`, undefined, [404]);
+        if (response.status === 404) {
+            return null;
+        }
+        const body = await response.json() as { sha: string; content: string; encoding: string };
+        return { sha: body.sha, content: Buffer.from(body.content, "base64").toString("utf8") };
+    }
+
+    /**
+     * Replaces a file whose blob sha is known. Answers false when it changed
+     * since (409), so the caller can read it again and retry.
+     */
+    async updateFile (repo: string, input: { path: string; content: string; sha: string; message: string; branch: string }): Promise<boolean> {
+        const response = await this.request("PUT", `/repos/${repo}/contents/${encodePath(input.path)}`, {
+            message: input.message,
+            content: toBase64(input.content),
+            sha: input.sha,
+            branch: input.branch
+        }, [409]);
+        return response.status !== 409;
     }
 
     async createIssue (repo: string, input: { title: string; body: string }): Promise<{ number: number; htmlUrl: string }> {
@@ -78,6 +102,9 @@ export class GitHubClient {
         return response;
     }
 }
+
+const toBase64 = (content: string | Uint8Array) =>
+    (typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content)).toString("base64");
 
 /** Each segment percent-encoded, the slashes kept. */
 const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");

@@ -19,11 +19,16 @@ export interface SearchHit {
 export const SUGGESTIONS = ["note", "issue", "ca-agenda", "unsure"] as const;
 export type Suggestion = typeof SUGGESTIONS[number];
 
+/** Where a capture came from, written in its frontmatter. */
+export type CaptureSource = "claude" | "telegram";
+
 export interface Capture {
+    /** Markdown: the words verbatim, or for Telegram the formatted messages. */
     text: string
     title?: string
     context?: string
     suggested?: Suggestion
+    source?: CaptureSource
 }
 
 /** Date and time parts in a zone, for file names and frontmatter. */
@@ -69,9 +74,17 @@ export function titleFrom (capture: Capture): string {
 
 /** `Inbox/2026-11-11 0942 Paiements des événements.md`, with an optional suffix. */
 export function inboxPath (title: string, at: Date, timeZone: string, attempt = 1): string {
+    return datedPath("Inbox", title, at, timeZone, attempt);
+}
+
+/**
+ * `<folder>/<date> <time> <title><suffix><extension>`: the inbox's naming,
+ * for attachments too (`Attachments/2026-11-11 0942 voice.ogg`).
+ */
+export function datedPath (folder: string, title: string, at: Date, timeZone: string, attempt = 1, extension = ".md"): string {
     const { date, time } = zonedParts(at, timeZone);
     const suffix = attempt > 1 ? ` (${attempt})` : "";
-    return `Inbox/${date} ${time} ${safeFileTitle(title)}${suffix}.md`;
+    return `${folder}/${date} ${time} ${safeFileTitle(title)}${suffix}${extension}`;
 }
 
 /** The inbox file, in the vault's conventions (see its CLAUDE.md). */
@@ -80,7 +93,7 @@ export function captureMarkdown (capture: Capture, title: string, at: Date, time
     const lines = [
         "---",
         `captured: ${iso}`,
-        "source: claude",
+        `source: ${capture.source ?? "claude"}`,
         `suggested: ${capture.suggested ?? "unsure"}`,
         "tags: [idea]",
         "---",

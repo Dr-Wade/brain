@@ -5,6 +5,7 @@ import { AppConfig, issueRepos } from "../config/app-config.js";
 import { GitHubClient, type FetchLike } from "./github.js";
 import {
     captureMarkdown,
+    datedPath,
     inboxPath,
     noteTitle,
     searchNotes,
@@ -70,21 +71,73 @@ export class VaultService {
     }
 
     /** One new inbox file per capture; an existing name gets " (2)", " (3)"… */
-    async capture (capture: Capture): Promise<{ path: string; url: string }> {
-        const { repo, branch, client } = this.vault();
+    async capture (capture: Capture): Promise<{ path: string; url: string; title: string }> {
         const at = this.now();
         const title = titleFrom(capture);
         const content = captureMarkdown(capture, title, at, this.config.env.VAULT_TIMEZONE);
+        const saved = await this.createUnique(attempt => inboxPath(title, at, this.config.env.VAULT_TIMEZONE, attempt), content, `Capture: ${title}`);
+        return { ...saved, title };
+    }
+
+    /**
+     * A file in Attachments/, named like the inbox (`2026-11-11 0942 voice.ogg`),
+     * never overwriting. Answers its path, for an `![[embed]]`.
+     */
+    async saveAttachment (name: string, bytes: Uint8Array): Promise<string> {
+        const at = this.now();
+        const dot = name.lastIndexOf(".");
+        const [stem, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+        const saved = await this.createUnique(attempt => datedPath("Attachments", stem, at, this.config.env.VAULT_TIMEZONE, attempt, extension), bytes, `Attachment: ${name}`);
+        return saved.path;
+    }
+
+    /** Creates a note at a fixed path unless one is there. */
+    async createNote (path: string, content: string, message: string): Promise<{ created: boolean; url?: string }> {
+        const { repo, branch, client } = this.vault();
+        const result = await client.createFile(repo, { path, content, branch, message });
+        if (!result.created) {
+            return { created: false };
+        }
+        this.headCheckedAt = 0;
+        return { created: true, url: result.htmlUrl };
+    }
+
+    /** Adds Markdown at the end of a note, re-reading it if it changed meanwhile. */
+    async append (path: string, markdown: string, message: string): Promise<void> {
+        const { repo, branch, client } = this.vault();
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            const file = await client.getFile(repo, path, branch);
+            if (!file) {
+                throw new NoteNotFoundError(path);
+            }
+            const content = `${file.content.replace(/\s*$/, "")}\n\n${markdown.trim()}\n`;
+            if (await client.updateFile(repo, { path, content, sha: file.sha, message, branch })) {
+                this.headCheckedAt = 0;
+                return;
+            }
+        }
+        throw new Error(`"${path}" kept changing; the addition was not saved.`);
+    }
+
+    /** Every note under a folder, from the branch head. */
+    async notesUnder (folder: string): Promise<Note[]> {
+        const { notes } = await this.load();
+        const prefix = folder.endsWith("/") ? folder : `${folder}/`;
+        return notes.filter(note => note.path.startsWith(prefix));
+    }
+
+    private async createUnique (pathFor: (attempt: number) => string, content: string | Uint8Array, message: string): Promise<{ path: string; url: string }> {
+        const { repo, branch, client } = this.vault();
         for (let attempt = 1; attempt <= 5; attempt++) {
-            const path = inboxPath(title, at, this.config.env.VAULT_TIMEZONE, attempt);
-            const result = await client.createFile(repo, { path, content, branch, message: `Capture: ${title}` });
+            const path = pathFor(attempt);
+            const result = await client.createFile(repo, { path, content, branch, message });
             if (result.created) {
                 // The next read must see it.
                 this.headCheckedAt = 0;
                 return { path, url: result.htmlUrl };
             }
         }
-        throw new Error(`Could not find a free file name for "${title}" in the inbox.`);
+        throw new Error(`Could not find a free file name for "${pathFor(1)}".`);
     }
 
     async search (query: string, limit?: number): Promise<SearchHit[]> {

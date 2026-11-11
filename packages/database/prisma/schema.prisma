@@ -276,3 +276,15 @@ model OauthClientAssertion {
 
   @@map("oauth_client_assertions")
 }
+
+// ─── Meeting prep ────────────────────────────────────────────────────────────
+// One row per daily pass made and reminder sent, keyed by what it was
+// (`run:2026-11-11`, `created:<note path>`, `eve:<note path>`): a restart or
+// a second pass the same day never sends one twice.
+
+model SentReminder {
+  key    String   @id
+  sentAt DateTime @default(now()) @map("sent_at")
+
+  @@map("sent_reminders")
+}

@@ -22,6 +22,20 @@ Tools (`services/api/src/mcp/tools.ts`):
 | `read_note` | One note's full text |
 | `list_inbox` | What waits to be sorted |
 | `file_for_atlas` | A GitHub issue on a repo in `ISSUE_REPOS`, **never labelled**: Atlas builds anything labelled `ready` |
+| `upcoming_meetings` | The coming meetings from the published calendar, with their prep notes |
+
+Two more doors into the vault, both in this service:
+
+- **The Brain Telegram bot** (`@drwade_brain_bot`, `telegram/`): anything Edward sends or
+  forwards becomes an inbox note (`source: telegram`); voice notes are kept as audio in
+  `Attachments/` and transcribed by Deepgram; forwards arriving within 30 s of the last capture
+  join its note. `/find`, `/inbox`, `/next`. It answers only `TELEGRAM_ALLOWED_USER_ID`, in
+  private.
+- **Meeting prep** (`meetings/`): once a day (`MEETINGS_RUN_AT`), the published calendar
+  (`CALENDAR_ICS_URL`, Outlook's ICS) gives the coming meetings; each one gets
+  `Meetings/<date> <time> <title>.md` as soon as it is within its rule's days
+  (`Meetings/Rules.md`, a table Edward edits), with the previous meeting of the series and its
+  open actions. The bot announces each note once, and the day before says how far the prep got.
 
 Single user. Sign-in is GitHub only, and only for `ALLOWED_GITHUB_ID`
 (Edward's numeric id, 38118787); unset, nobody gets in.
@@ -50,6 +64,16 @@ Single user. Sign-in is GitHub only, and only for `ALLOWED_GITHUB_ID`
   page with the connector URL. The `oauthProviderClient` plugin carries
   Claude's signed authorization request through sign-in and consent.
 
+## Where this departs from the handbook
+
+- **No worker for the webhook or the daily pass.** The handbook sends webhooks and batch jobs
+  through BullMQ to a worker. Here Telegram is the queue: the webhook is registered with
+  `max_connections: 1` and answers only once the note is saved, so a failure (GitHub down) is a
+  500 and Telegram delivers the update again; after three tries the bot says it gave up. The
+  daily pass is a timer in the API, made safe to repeat by `sent_reminders` (one row per pass
+  and per reminder) and by notes being create-only. One user, a few messages a day: a Redis and
+  a second container would cost more than they protect.
+
 ## Gotchas
 
 - **`resources` is declared in full in `mcp()`** with `allowedScopes`: the
@@ -69,6 +93,15 @@ Single user. Sign-in is GitHub only, and only for `ALLOWED_GITHUB_ID`
 - **better-auth packages are pinned to the newest release older than a day**
   (`minimumReleaseAge` in `pnpm-workspace.yaml`): pnpm refuses fresher ones.
 
+- **A message forwarded from a group carries its author, never the group**: Telegram does not
+  tell bots where a forward came from, except for channel posts (which get a `t.me` link).
+- **Outlook names its zones the Windows way** ("Romance Standard Time"): `calendar.ts`
+  registers the feed's own VTIMEZONE blocks before reading any date. Outlook's published feed
+  has titles, places and descriptions, but no attendees.
+- **The calendar link and the bot token are secrets**: anyone holding the ICS link reads the
+  calendar. Neither is ever logged (errors give the status, not the URL).
+- **A moved meeting gets a new prep note** (the path holds the date); the old one stays.
+
 ## Layout
 
 | Path | What |
@@ -76,11 +109,11 @@ Single user. Sign-in is GitHub only, and only for `ALLOWED_GITHUB_ID`
 | `packages/schemas` | Zod schemas shared by the API and the client (`/api/config`). |
 | `packages/database` | Prisma schema (auth and OAuth tables), migrations, the generated client. |
 | `packages/logger` | pino options. |
-| `services/api` | NestJS 12: `auth/` (better-auth, GitHub, OAuth provider), `mcp/` (endpoint and tools), `vault/` (GitHub-backed vault). |
+| `services/api` | NestJS 12: `auth/` (better-auth, GitHub, OAuth provider), `mcp/` (endpoint and tools), `vault/` (GitHub-backed vault), `telegram/` (the bot), `meetings/` (calendar and prep notes). |
 | `services/client` | Vue 3 SPA: sign-in, consent, home. |
 | `e2e/` | Playwright: Claude's authorization reaching the sign-in page. |
 
-No worker, no Redis: nothing here is slow enough to leave the request.
+No worker, no Redis: see "Where this departs from the handbook".
 
 ## Commands
 
@@ -150,7 +183,10 @@ Dokploy (the tombre server), project "Brain": a Postgres, an `API` app
 The API takes `DATABASE_URL`, `APP_URL=https://brain.tombre.fr`,
 `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
 `ALLOWED_GITHUB_ID`, `VAULT_REPO`, `VAULT_TOKEN`, and optionally `ISSUE_REPOS`,
-`ISSUE_TOKEN`, `SENTRY_DSN`. It applies pending migrations when it starts.
+`ISSUE_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_ALLOWED_USER_ID`,
+`DEEPGRAM_API_KEY`, `CALENDAR_ICS_URL`, `SENTRY_DSN`. It applies pending migrations when it
+starts, registers the Telegram webhook (production only), and runs the meeting pass at
+`MEETINGS_RUN_AT` (and at start, when that hour has passed and today's pass has not run).
 
 The workflow's `DOKPLOY_TOKEN` is a Dokploy API key of its own,
 `github-actions-brain`: revoke it in Dokploy to cut the pipeline off without

@@ -10,6 +10,8 @@ import type { Request as ExpressRequest, Response as ExpressResponse } from "exp
 
 import { mcpResource, type Auth } from "../auth/auth.module.js";
 import { AppConfig, issueRepos } from "../config/app-config.js";
+import { MeetingsModule } from "../meetings/meetings.module.js";
+import { MeetingsService } from "../meetings/meetings.service.js";
 import { VaultModule } from "../vault/vault.module.js";
 import { VaultService } from "../vault/vault.service.js";
 import { createVaultMcpServer } from "./tools.js";
@@ -26,7 +28,8 @@ export class McpEndpoint {
     constructor (
         @Inject(AppConfig) private readonly config: AppConfig,
         @Inject(AuthService) private readonly auth: AuthService<Auth>,
-        @Inject(VaultService) private readonly vault: VaultService
+        @Inject(VaultService) private readonly vault: VaultService,
+        @Inject(MeetingsService) private readonly meetings: MeetingsService
     ) {}
 
     handle (request: Request): Promise<Response> {
@@ -36,7 +39,11 @@ export class McpEndpoint {
 
     private build () {
         const { env } = this.config;
-        const options = { issueRepos: env.ISSUE_TOKEN ? issueRepos(env) : [], version: env.APP_VERSION };
+        const options = {
+            issueRepos: env.ISSUE_TOKEN ? issueRepos(env) : [],
+            version: env.APP_VERSION,
+            meetings: this.meetings.configured ? this.meetings : undefined
+        };
         const mcp = createMcpHandler(() => createVaultMcpServer(this.vault, options));
         return requireMcpAuth(this.auth.instance, request => mcp.fetch(request), { resource: mcpResource(env) });
     }
@@ -90,7 +97,7 @@ export function toFetchRequest (req: ExpressRequest, appUrl: string): Request {
 }
 
 @Module({
-    imports: [VaultModule],
+    imports: [VaultModule, MeetingsModule],
     controllers: [McpController],
     providers: [McpEndpoint]
 })

@@ -1,15 +1,19 @@
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
+import type { MeetingsService } from "../meetings/meetings.service.js";
 import { SUGGESTIONS } from "../vault/notes.js";
 import { NoteNotFoundError, NotConfiguredError, RepoNotAllowedError, type VaultService } from "../vault/vault.service.js";
 
 /** What the tools need from the vault; a fake in tests. */
 export type Vault = Pick<VaultService, "capture" | "search" | "read" | "inbox" | "fileIssue">;
+/** The calendar side; absent when no calendar is published. */
+export type Meetings = Pick<MeetingsService, "upcoming">;
 
 const INSTRUCTIONS = `Edward's second brain: an Obsidian vault in French and English.
 - When Edward shares an idea, a thought to keep, or says "note that" / "note ça", call capture_idea with his own words. Do not wait for the end of the conversation.
 - Before answering a question about something he may have written down, call search_notes, then read_note on the best hits.
+- To help prepare a meeting: upcoming_meetings, then read_note on its prep note, then search_notes (and his Drive, when that connector is on) for what it needs. Fill the prep note's questions with him; do not invent decisions.
 - file_for_atlas opens a GitHub issue for software work. Only when Edward asks for an issue, and after reading the title back to him.`;
 
 const text = (value: string): CallToolResult => ({ content: [{ type: "text", text: value }] });
@@ -26,7 +30,7 @@ async function answer (run: () => Promise<string>): Promise<CallToolResult> {
     }
 }
 
-export function createVaultMcpServer (vault: Vault, options: { issueRepos: string[]; version: string }): McpServer {
+export function createVaultMcpServer (vault: Vault, options: { issueRepos: string[]; version: string; meetings?: Meetings }): McpServer {
     const server = new McpServer({ name: "brain", title: "Edward's vault", version: options.version }, { instructions: INSTRUCTIONS });
 
     server.registerTool("capture_idea", {
@@ -84,6 +88,30 @@ export function createVaultMcpServer (vault: Vault, options: { issueRepos: strin
         }
         return items.map((item, index) => `${index + 1}. ${item.title} — ${item.path}\n   ${item.preview}`).join("\n");
     }));
+
+    const meetings = options.meetings;
+    if (meetings) {
+        server.registerTool("upcoming_meetings", {
+            title: "Upcoming meetings",
+            description: "Edward's meetings in the coming days, from his calendar, each with its prep note (a path for read_note) and how much of the prep is done. Start here to help him prepare a meeting.",
+            inputSchema: z.object({
+                days: z.number().int().min(1).max(30).optional().describe("How many days ahead, 7 by default.")
+            }),
+            annotations: { readOnlyHint: true, openWorldHint: false }
+        }, async ({ days }) => answer(async () => {
+            const list = await meetings.upcoming(days ?? 7);
+            if (list.length === 0) {
+                return `No meetings in the next ${days ?? 7} days.`;
+            }
+            return list.map(meeting => {
+                const where = meeting.location ? ` · ${meeting.location}` : "";
+                const prep = meeting.prepNote
+                    ? `\n   Prep note: ${meeting.prepNote}${meeting.prep && meeting.prep.total > 0 ? ` (${meeting.prep.done}/${meeting.prep.total} done)` : ""}`
+                    : "\n   No prep note yet.";
+                return `• ${meeting.when} — ${meeting.title}${where}${prep}`;
+            }).join("\n");
+        }));
+    }
 
     if (options.issueRepos.length > 0) {
         server.registerTool("file_for_atlas", {

@@ -31,6 +31,21 @@ const EnvSchema = z.object({
     // owner/name), and a token with Issues read and write on them.
     ISSUE_REPOS: unsetIfEmpty(z.string().optional()),
     ISSUE_TOKEN: optional,
+    // The Brain Telegram bot: its token, the secret Telegram sends back on
+    // every webhook call, and the one Telegram user it answers.
+    TELEGRAM_BOT_TOKEN: optional,
+    TELEGRAM_WEBHOOK_SECRET: unsetIfEmpty(z.string().regex(/^[\w-]{16,256}$/, "16 to 256 of A-Z a-z 0-9 _ -").optional()),
+    TELEGRAM_ALLOWED_USER_ID: unsetIfEmpty(z.string().regex(/^\d+$/, "a numeric Telegram user id").optional()),
+    // Voice notes: Deepgram, its EU endpoint by default. Unset: kept as audio.
+    DEEPGRAM_API_KEY: optional,
+    DEEPGRAM_URL: unsetIfEmpty(z.url().default("https://api.eu.deepgram.com")),
+    DEEPGRAM_MODEL: unsetIfEmpty(z.string().default("nova-3")),
+    // "multi": French and English, switching mid-sentence.
+    DEEPGRAM_LANGUAGE: unsetIfEmpty(z.string().default("multi")),
+    // The published calendar (an ICS link) that meeting prep notes come
+    // from, and when, in VAULT_TIMEZONE, the daily pass runs.
+    CALENDAR_ICS_URL: unsetIfEmpty(z.url().optional()),
+    MEETINGS_RUN_AT: unsetIfEmpty(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "HH:MM").default("07:00")),
     SENTRY_DSN: optional,
     SENTRY_CLIENT_DSN: optional
 }).superRefine((env, ctx) => {
@@ -38,6 +53,10 @@ const EnvSchema = z.object({
     // key, so anyone could forge one. Refuse to start instead.
     if (env.NODE_ENV === "production" && (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32)) {
         ctx.addIssue({ code: "custom", path: ["BETTER_AUTH_SECRET"], message: "required in production, at least 32 characters" });
+    }
+    // A bot without its webhook secret would accept updates from anyone.
+    if (env.TELEGRAM_BOT_TOKEN && !env.TELEGRAM_WEBHOOK_SECRET) {
+        ctx.addIssue({ code: "custom", path: ["TELEGRAM_WEBHOOK_SECRET"], message: "required with TELEGRAM_BOT_TOKEN" });
     }
 });
 
