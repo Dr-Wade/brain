@@ -154,5 +154,8 @@ The API takes `DATABASE_URL`, `APP_URL=https://brain.tombre.fr`,
 
 The workflow's `DOKPLOY_TOKEN` is a Dokploy API key of its own,
 `github-actions-brain`: revoke it in Dokploy to cut the pipeline off without
-touching anything else. The GHCR packages `brain/api` and `brain/client` must
+touching anything else. It is created with `rateLimitEnabled: false`: a key
+created through Dokploy's API otherwise allows 10 requests a day, and one
+deploy with its status polling spends about five; past that, the deploy
+action reports a 401. The GHCR packages `brain/api` and `brain/client` must
 be public: Dokploy pulls them without credentials.
