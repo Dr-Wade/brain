@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { TodoCreate } from "@starter/schemas";
+import { TodoCreate } from "@brain/schemas";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";

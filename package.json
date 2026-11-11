@@ -1,5 +1,5 @@
 {
-    "name": "starter",
+    "name": "brain",
     "private": true,
     "type": "module",
     "packageManager": "pnpm@12.16.1",
@@ -8,9 +8,9 @@
     },
     "scripts": {
         "dev": "pnpm build:packages && pnpm -r --parallel dev",
-        "dev:api": "pnpm --filter @starter/api dev",
-        "dev:worker": "pnpm --filter @starter/worker dev",
-        "dev:client": "pnpm --filter @starter/client dev",
+        "dev:api": "pnpm --filter @brain/api dev",
+        "dev:worker": "pnpm --filter @brain/worker dev",
+        "dev:client": "pnpm --filter @brain/client dev",
         "build": "pnpm -r build",
         "build:packages": "pnpm -r --filter \"./packages/**\" build",
         "typecheck": "pnpm -r typecheck",
@@ -22,12 +22,11 @@
         "check": "pnpm build:packages && pnpm lint && pnpm typecheck && pnpm test",
         "db:up": "docker compose up -d --wait",
         "db:down": "docker compose down",
-        "db:migrate": "pnpm --filter @starter/database migrate:dev",
-        "db:migration": "pnpm --filter @starter/database migration:create",
-        "db:deploy": "pnpm --filter @starter/database migrate:deploy",
-        "db:reset": "pnpm --filter @starter/database migrate:reset",
-        "openapi": "pnpm --filter @starter/api openapi:export && pnpm --filter @starter/client openapi:generate",
-        "init-project": "node scripts/init-project.mjs"
+        "db:migrate": "pnpm --filter @brain/database migrate:dev",
+        "db:migration": "pnpm --filter @brain/database migration:create",
+        "db:deploy": "pnpm --filter @brain/database migrate:deploy",
+        "db:reset": "pnpm --filter @brain/database migrate:reset",
+        "openapi": "pnpm --filter @brain/api openapi:export && pnpm --filter @brain/client openapi:generate"
     },
     "devDependencies": {
         "@drwade/eslint-config": "^2.0.0",

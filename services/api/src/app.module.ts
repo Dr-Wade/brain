@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { SentryGlobalFilter, SentryModule } from "@sentry/nestjs/setup";
-import { loggerOptions } from "@starter/logger";
+import { loggerOptions } from "@brain/logger";
 import { LoggerModule } from "nestjs-pino";
 
 import { AuthModule } from "./auth/auth.module.js";

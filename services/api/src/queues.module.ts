@@ -1,6 +1,6 @@
 import { BullModule } from "@nestjs/bullmq";
 import { Global, Inject, Injectable, Module, type OnApplicationShutdown } from "@nestjs/common";
-import { createRedisClient, QUEUE_PREFIX, QUEUES } from "@starter/queues";
+import { createRedisClient, QUEUE_PREFIX, QUEUES } from "@brain/queues";
 import type { Redis } from "ioredis";
 
 import { AppConfig } from "./config/app-config.js";

@@ -1,15 +1,4 @@
-# Starter
-
-<!-- starter:begin -->
-A template for a new project on the [handbook](https://github.com/Dr-Wade/handbook)'s
-stack, with a small to-do app that runs through every layer: Prisma model, NestJS
-module, Zod contract, OpenAPI, generated client, TanStack Query, PrimeVue page, a
-BullMQ job, and tests at each level.
-
-Start a project from it: `gh repo create <owner>/<name> --template Dr-Wade/starter`,
-then `pnpm install && pnpm init-project <name>`. [`CLAUDE.md`](CLAUDE.md) has the
-whole procedure, and an agent can follow it on its own.
-<!-- starter:end -->
+# Brain
 
 ## Develop
 

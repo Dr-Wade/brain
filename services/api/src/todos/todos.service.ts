@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma, type Todo as TodoRow } from "@starter/database";
-import type { Todo, TodoCreate, TodoUpdate } from "@starter/schemas";
+import { Prisma, type Todo as TodoRow } from "@brain/database";
+import type { Todo, TodoCreate, TodoUpdate } from "@brain/schemas";
 
 import { PrismaService } from "../prisma/prisma.service.js";
 import { TodoRemindersService } from "./todo-reminders.service.js";

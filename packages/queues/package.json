@@ -1,5 +1,5 @@
 {
-    "name": "@starter/queues",
+    "name": "@brain/queues",
     "private": true,
     "type": "module",
     "exports": {

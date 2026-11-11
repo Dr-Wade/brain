@@ -12,7 +12,7 @@ import { z } from "zod";
  *
  * Changing it strands the jobs already waiting under the old prefix.
  */
-export const QUEUE_PREFIX = "starter";
+export const QUEUE_PREFIX = "brain";
 
 export const QUEUES = {
     todoReminders: "todo-reminders"

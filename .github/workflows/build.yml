@@ -9,8 +9,8 @@ on:
     types: [labeled, synchronize]
 
 env:
-  DATABASE_URL: postgresql://starter:starter@localhost:4313/starter
-  REDIS_URL: redis://localhost:4314
+  DATABASE_URL: postgresql://brain:brain@localhost:4693/brain
+  REDIS_URL: redis://localhost:4694
 
 jobs:
   full:

@@ -1,6 +1,6 @@
 import { InjectQueue } from "@nestjs/bullmq";
 import { Injectable } from "@nestjs/common";
-import { QUEUES, todoReminderJobId, type TodoReminderJob } from "@starter/queues";
+import { QUEUES, todoReminderJobId, type TodoReminderJob } from "@brain/queues";
 import type { Queue } from "bullmq";
 
 interface Reminder {

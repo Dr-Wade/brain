@@ -1,5 +1,5 @@
 {
-    "name": "@starter/logger",
+    "name": "@brain/logger",
     "private": true,
     "type": "module",
     "exports": {

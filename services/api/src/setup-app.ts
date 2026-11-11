@@ -31,7 +31,7 @@ export async function createApp () {
 
 function createOpenApiDocument (app: NestExpressApplication): OpenAPIObject {
     const config = new DocumentBuilder()
-        .setTitle("Starter API")
+        .setTitle("Brain API")
         .setVersion(process.env.APP_VERSION ?? "dev")
         .addCookieAuth("better-auth.session_token")
         .build();

@@ -1,5 +1,5 @@
 import { Global, Inject, Injectable, Module, type OnModuleDestroy } from "@nestjs/common";
-import { PrismaClient, prismaClientOptions } from "@starter/database";
+import { PrismaClient, prismaClientOptions } from "@brain/database";
 
 import { AppConfig } from "../config/app-config.js";
 

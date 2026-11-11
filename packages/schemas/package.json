@@ -1,5 +1,5 @@
 {
-    "name": "@starter/schemas",
+    "name": "@brain/schemas",
     "private": true,
     "type": "module",
     "exports": {

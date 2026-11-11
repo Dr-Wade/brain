@@ -7,8 +7,8 @@ if (existsSync(".env")) {
     process.loadEnvFile(".env");
 }
 
-const apiPort = process.env.API_PORT || "4310";
-const previewPort = process.env.PREVIEW_PORT || "4312";
+const apiPort = process.env.API_PORT || "4690";
+const previewPort = process.env.PREVIEW_PORT || "4692";
 const appUrl = `http://localhost:${previewPort}`;
 
 // Journeys through the built client (`vite preview`, never the dev server)
@@ -36,7 +36,7 @@ export default defineConfig({
             reuseExistingServer: !process.env.CI
         },
         {
-            command: "pnpm --filter @starter/client preview",
+            command: "pnpm --filter @brain/client preview",
             url: appUrl,
             reuseExistingServer: !process.env.CI
         }

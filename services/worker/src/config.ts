@@ -9,7 +9,7 @@ const EnvSchema = z.object({
     NODE_ENV: unsetIfEmpty(z.enum(["development", "test", "production"]).default("development")),
     DATABASE_URL: z.url(),
     REDIS_URL: z.url(),
-    APP_URL: unsetIfEmpty(z.url().default("http://localhost:4311")),
+    APP_URL: unsetIfEmpty(z.url().default("http://localhost:4691")),
     SMTP_HOST: optional,
     SMTP_PORT: unsetIfEmpty(z.coerce.number().int().positive().default(587)),
     SMTP_USER: optional,

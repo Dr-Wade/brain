@@ -1,19 +1,19 @@
 # Local Postgres and Redis for development and tests. `pnpm db:up` starts them.
-name: starter
+name: brain
 
 services:
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: starter
-      POSTGRES_PASSWORD: starter
-      POSTGRES_DB: starter
+      POSTGRES_USER: brain
+      POSTGRES_PASSWORD: brain
+      POSTGRES_DB: brain
     ports:
-      - "${POSTGRES_PORT:-4313}:5432"
+      - "${POSTGRES_PORT:-4693}:5432"
     volumes:
       - postgres:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U starter -d starter"]
+      test: ["CMD-SHELL", "pg_isready -U brain -d brain"]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -21,7 +21,7 @@ services:
   redis:
     image: redis:8-alpine
     ports:
-      - "${REDIS_PORT:-4314}:6379"
+      - "${REDIS_PORT:-4694}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s

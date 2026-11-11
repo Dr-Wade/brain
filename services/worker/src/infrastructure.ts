@@ -1,6 +1,6 @@
 import { Global, Inject, Injectable, Module, type OnApplicationShutdown, type OnModuleDestroy } from "@nestjs/common";
-import { PrismaClient, prismaClientOptions } from "@starter/database";
-import { createRedisClient } from "@starter/queues";
+import { PrismaClient, prismaClientOptions } from "@brain/database";
+import { createRedisClient } from "@brain/queues";
 import type { Redis } from "ioredis";
 
 import { WorkerConfig } from "./config.js";

@@ -1,4 +1,4 @@
-# Starter — agent notes
+# Brain — agent notes
 
 The stack, CI and deploy conventions are the handbook's (`~/repos/handbook`:
 `stack.md`, `ci.md`, `deploy.md`). Read the relevant one before changing the
@@ -22,7 +22,7 @@ project's own notes.
    cd <name> && pnpm init-project <name> "Display name"
    ```
 
-   `init-project` renames the `@starter/*` packages, the queue prefix, the
+   `init-project` renames the `@brain/*` packages, the queue prefix, the
    database and the titles, picks a port band from the name, removes
    README's template blurb, runs `pnpm install`, lists what still says
    "starter", and deletes itself. It writes the display name into both

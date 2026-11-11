@@ -1,8 +1,8 @@
 import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { SentryModule } from "@sentry/nestjs/setup";
-import { loggerOptions } from "@starter/logger";
-import { QUEUE_PREFIX, QUEUES } from "@starter/queues";
+import { loggerOptions } from "@brain/logger";
+import { QUEUE_PREFIX, QUEUES } from "@brain/queues";
 import type { Redis } from "ioredis";
 import { LoggerModule } from "nestjs-pino";
 

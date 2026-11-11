@@ -11,10 +11,10 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, root, "");
     // Same origin as in production, where the reverse proxy routes /api: the
     // client calls /api/... and never knows the API's address.
-    const proxy = { "/api": { target: `http://localhost:${env.API_PORT || 4310}` } };
+    const proxy = { "/api": { target: `http://localhost:${env.API_PORT || 4690}` } };
     return {
         plugins: [vue(), tailwindcss()],
-        server: { port: Number(env.CLIENT_PORT || 4311), strictPort: true, proxy },
-        preview: { port: Number(env.PREVIEW_PORT || 4312), strictPort: true, proxy }
+        server: { port: Number(env.CLIENT_PORT || 4691), strictPort: true, proxy },
+        preview: { port: Number(env.PREVIEW_PORT || 4692), strictPort: true, proxy }
     };
 });

@@ -2,8 +2,8 @@ import "reflect-metadata";
 
 import { getQueueToken } from "@nestjs/bullmq";
 import type { INestApplication } from "@nestjs/common";
-import { QUEUES, todoReminderJobId } from "@starter/queues";
-import type { Todo } from "@starter/schemas";
+import { QUEUES, todoReminderJobId } from "@brain/queues";
+import type { Todo } from "@brain/schemas";
 import type { Queue } from "bullmq";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -14,7 +14,7 @@ import { createApp } from "../setup-app.js";
 describe.skipIf(!process.env.DATABASE_URL)("todos API", () => {
     let app: INestApplication;
     let base: string;
-    const origin = process.env.APP_URL ?? "http://localhost:4311";
+    const origin = process.env.APP_URL ?? "http://localhost:4691";
 
     beforeAll(async () => {
         ({ app } = await createApp());

@@ -1,6 +1,6 @@
 import { Processor, WorkerHost } from "@nestjs/bullmq";
 import { Inject, Logger } from "@nestjs/common";
-import { QUEUES, TodoReminderJob } from "@starter/queues";
+import { QUEUES, TodoReminderJob } from "@brain/queues";
 import type { Job } from "bullmq";
 
 import { WorkerConfig } from "../config.js";

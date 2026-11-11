@@ -1,6 +1,6 @@
 import { Controller, Get, Inject, Module } from "@nestjs/common";
 import { ApiOkResponse } from "@nestjs/swagger";
-import { ClientConfig } from "@starter/schemas";
+import { ClientConfig } from "@brain/schemas";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 
 import { AppConfig } from "../config/app-config.js";

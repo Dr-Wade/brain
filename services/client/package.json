@@ -1,5 +1,5 @@
 {
-    "name": "@starter/client",
+    "name": "@brain/client",
     "private": true,
     "type": "module",
     "scripts": {
@@ -10,11 +10,12 @@
         "openapi:generate": "openapi-ts"
     },
     "dependencies": {
+        "@better-auth/oauth-provider": "1.7.19",
+        "@brain/schemas": "workspace:*",
         "@primeuix/themes": "^2.0.3",
         "@sentry/vue": "^11.10.0",
-        "@starter/schemas": "workspace:*",
         "@tanstack/vue-query": "^5.105.3",
-        "better-auth": "^1.7.0",
+        "better-auth": "1.7.19",
         "primeicons": "^7.0.0",
         "primevue": "^4.5.5",
         "vue": "^3.5.44",

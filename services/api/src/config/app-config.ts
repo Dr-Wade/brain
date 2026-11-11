@@ -9,12 +9,12 @@ const optional = unsetIfEmpty(z.string().optional());
 const EnvSchema = z.object({
     NODE_ENV: unsetIfEmpty(z.enum(["development", "test", "production"]).default("development")),
     APP_VERSION: unsetIfEmpty(z.string().default("dev")),
-    API_PORT: unsetIfEmpty(z.coerce.number().int().positive().default(4310)),
+    API_PORT: unsetIfEmpty(z.coerce.number().int().positive().default(4690)),
     DATABASE_URL: z.url(),
     REDIS_URL: z.url(),
     // Where users reach the app. The client is served there and /api is routed
     // beside it, so this is better-auth's base URL and its only trusted origin.
-    APP_URL: unsetIfEmpty(z.url().default("http://localhost:4311")),
+    APP_URL: unsetIfEmpty(z.url().default("http://localhost:4691")),
     BETTER_AUTH_SECRET: optional,
     SENTRY_DSN: optional,
     SENTRY_CLIENT_DSN: optional
