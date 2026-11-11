@@ -101,6 +101,11 @@ describe.skipIf(!process.env.DATABASE_URL)("OAuth for the MCP endpoint", () => {
         expect(location.searchParams.get("sig")).toBeTruthy();
     });
 
+    it("hands the client the connector URL, built from APP_URL", async () => {
+        const config = await (await fetch(`${root}/api/config`)).json() as { connectorUrl: string };
+        expect(config.connectorUrl).toBe(resource);
+    });
+
     it("keeps session JWTs away from the token endpoint they could be mistaken for", async () => {
         expect((await fetch(`${root}/api/auth/token`)).status).toBe(404);
     });

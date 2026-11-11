@@ -52,12 +52,17 @@
           "sentryDsn": {
             "nullable": true,
             "type": "string"
+          },
+          "connectorUrl": {
+            "type": "string",
+            "format": "uri"
           }
         },
         "required": [
           "version",
           "environment",
-          "sentryDsn"
+          "sentryDsn",
+          "connectorUrl"
         ],
         "additionalProperties": false
       }

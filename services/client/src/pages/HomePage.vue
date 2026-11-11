@@ -1,20 +1,22 @@
 <script setup lang="ts">
+import { useQuery } from "@tanstack/vue-query";
 import Button from "primevue/button";
 import InputText from "primevue/inputtext";
 import { useToast } from "primevue/usetoast";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 
+import { clientConfigGetOptions } from "../api/@tanstack/vue-query.gen.js";
 import { authClient } from "../lib/auth.js";
 
 const { t } = useI18n();
 const toast = useToast();
 const router = useRouter();
-const connectorUrl = `${window.location.origin}/api/mcp`;
+const { data: config } = useQuery(clientConfigGetOptions());
 
 const copy = async () => {
     try {
-        await navigator.clipboard.writeText(connectorUrl);
+        await navigator.clipboard.writeText(config.value?.connectorUrl ?? "");
         toast.add({ severity: "success", summary: t("home.copied"), life: 2500 });
     } catch {
         toast.add({ severity: "warn", summary: t("home.copyFailed"), life: 4000 });
@@ -51,10 +53,11 @@ const signOut = async () => {
           id="connector-url"
           class="flex-1"
           readonly
-          :value="connectorUrl"
+          :value="config?.connectorUrl ?? ''"
         />
         <Button
           :aria-label="t('home.copy')"
+          :disabled="!config"
           icon="pi pi-copy"
           @click="copy"
         />

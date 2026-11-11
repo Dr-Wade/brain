@@ -8,6 +8,7 @@ export type ClientConfig = {
   version: string;
   environment: string;
   sentryDsn: string | null;
+  connectorUrl: string;
 };
 
 export type ClientConfigGetData = {

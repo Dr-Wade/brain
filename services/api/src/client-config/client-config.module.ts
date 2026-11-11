@@ -3,6 +3,7 @@ import { ApiOkResponse } from "@nestjs/swagger";
 import { ClientConfig } from "@brain/schemas";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 
+import { mcpResource } from "../auth/auth.module.js";
 import { AppConfig } from "../config/app-config.js";
 
 /**
@@ -21,7 +22,8 @@ export class ClientConfigController {
         return {
             version: env.APP_VERSION,
             environment: env.NODE_ENV,
-            sentryDsn: env.SENTRY_CLIENT_DSN ?? null
+            sentryDsn: env.SENTRY_CLIENT_DSN ?? null,
+            connectorUrl: mcpResource(env)
         };
     }
 }

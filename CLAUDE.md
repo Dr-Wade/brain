@@ -151,3 +151,8 @@ The API takes `DATABASE_URL`, `APP_URL=https://brain.tombre.fr`,
 `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
 `ALLOWED_GITHUB_ID`, `VAULT_REPO`, `VAULT_TOKEN`, and optionally `ISSUE_REPOS`,
 `ISSUE_TOKEN`, `SENTRY_DSN`. It applies pending migrations when it starts.
+
+The workflow's `DOKPLOY_TOKEN` is a Dokploy API key of its own,
+`github-actions-brain`: revoke it in Dokploy to cut the pipeline off without
+touching anything else. The GHCR packages `brain/api` and `brain/client` must
+be public: Dokploy pulls them without credentials.
