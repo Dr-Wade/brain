@@ -161,7 +161,7 @@ export class TelegramService implements OnApplicationBootstrap {
 
         const joining = message.forward_origin && this.last && now - this.last.at < APPEND_WINDOW_MS ? this.last : undefined;
         if (joining) {
-            await this.vault.append(joining.path, markdown, `Telegram: add to ${joining.title}`);
+            await this.vault.append(joining.path, markdown, { message: `Telegram: add to ${joining.title}` });
             joining.at = now;
             await this.reply(message, `➕ Added to “${joining.title}”`);
             return;

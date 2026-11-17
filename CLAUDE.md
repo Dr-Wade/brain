@@ -19,10 +19,22 @@ Tools (`services/api/src/mcp/tools.ts`):
 | --- | --- |
 | `capture_idea` | One new file in `Inbox/` per idea, the words verbatim, one commit each |
 | `search_notes` | Keyword search over the vault's Markdown, accents and case ignored |
-| `read_note` | One note's full text |
+| `read_note` | One note's full text, by path or by title |
 | `list_inbox` | What waits to be sorted |
+| `list_notes` | One folder's notes and subfolders |
+| `open_tasks` | Unticked `- [ ]` lines by note (templates and archive aside) |
+| `create_note` | A new note at a path, frontmatter added; never overwrites |
+| `edit_note` | Exact passages replaced, each found once (whitespace-tolerant); all or none |
+| `append_to_note` | Markdown at the end of a note or of a section by heading |
+| `move_note` | Move or rename, wikilinks following; leaving the inbox, the frontmatter becomes a note's |
+| `delete_note` | Inbox notes only; elsewhere notes move to `Archive/` |
 | `file_for_atlas` | A GitHub issue on a repo in `ISSUE_REPOS`, **never labelled**: Atlas builds anything labelled `ready` |
 | `upcoming_meetings` | The coming meetings from the published calendar, with their prep notes |
+
+The vault's conventions are enforced in `vault/editing.ts`, not left to the model: paths stay
+Markdown outside hidden folders (so never `.github/workflows`), `Archive/Notion/` is read-only,
+`Meetings/` notes never move (the meeting pass finds them by path), only `Inbox/` deletes, and
+names are compared case-insensitively (Windows and macOS see one file).
 
 Two more doors into the vault, both in this service:
 
@@ -42,11 +54,18 @@ Single user. Sign-in is GitHub only, and only for `ALLOWED_GITHUB_ID`
 
 ## How it fits together
 
-- **GitHub is the vault's truth.** Writes go through the contents API (create
-  only, never overwrite: a taken name gets " (2)"). Reads come from a tarball
-  of the branch head, parsed once per commit and kept in memory; the head is
-  re-checked at most every 15 s and right after a capture
-  (`vault/vault.service.ts`). No database row holds a note.
+- **GitHub is the vault's truth.** Captures, attachments and prep notes go
+  through the contents API (create only, never overwrite: a taken name gets
+  " (2)"). Every change to existing notes (edit, append, move, delete, a new
+  note at a path) is computed from the branch head and committed on top of it
+  through the Git Data API (`commitFiles`: tree, commit, then a
+  non-forced ref update); if the branch moved meanwhile, it starts again from
+  the new head, so a change made on the laptop is never overwritten. A move is
+  one commit with the links it rewrites. Reads come from a tarball of the
+  branch head, parsed once per commit and kept in memory; the head is
+  re-checked at most every 15 s, before every change, and right after a
+  capture; the connector's own commits update the snapshot without a new
+  tarball (`vault/vault.service.ts`). No database row holds a note.
 - **The database holds auth only**: better-auth's tables plus the OAuth 2.1
   provider's (`jwt` + `@better-auth/mcp`). Claude registers itself (dynamic
   client registration), the user signs in with GitHub and consents once,
@@ -93,11 +112,20 @@ Single user. Sign-in is GitHub only, and only for `ALLOWED_GITHUB_ID`
 - **better-auth packages are pinned to the newest release older than a day**
   (`minimumReleaseAge` in `pnpm-workspace.yaml`): pnpm refuses fresher ones.
 
+- **GitHub's tarball splits long paths**: `git archive` writes ustar, where a path over 100
+  bytes goes into the header's `prefix` and `name` fields, and a longer segment into a pax
+  header. The root alone (`Dr-Wade-vault-<sha>/`) is 56 bytes, so most captures have long paths.
+  `vault/tar.ts` reads all three forms; nanotar, used before, read only `name` and silently
+  dropped those notes from search, read and the inbox. Its test builds tarballs with the real
+  `git archive` (`github-tarball.fixture.ts`).
 - **A message forwarded from a group carries its author, never the group**: Telegram does not
   tell bots where a forward came from, except for channel posts (which get a `t.me` link).
 - **Outlook names its zones the Windows way** ("Romance Standard Time"): `calendar.ts`
   registers the feed's own VTIMEZONE blocks before reading any date. Outlook's published feed
   has titles, places and descriptions, but no attendees.
+- **Outlook's published feed is slow and sometimes hangs** (100 s to the first byte seen, and
+  hours of connection failures on 13 Nov 2026): the fetch has a 3-minute timeout, and a failed
+  pass logs fetch's `cause` (the reason) and runs again at the next tick.
 - **The calendar link and the bot token are secrets**: anyone holding the ICS link reads the
   calendar. Neither is ever logged (errors give the status, not the URL).
 - **A moved meeting gets a new prep note** (the path holds the date); the old one stays.

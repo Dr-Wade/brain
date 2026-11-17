@@ -11,6 +11,12 @@ export class GitHubError extends Error {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** A file's new text in a commit, or null to delete it. */
+export interface FileChange {
+    path: string
+    content: string | null
+}
+
 export class GitHubClient {
     constructor (
         private readonly token: string,
@@ -18,10 +24,10 @@ export class GitHubClient {
         private readonly baseUrl = "https://api.github.com"
     ) {}
 
-    /** The commit a branch points at. */
-    async branchSha (repo: string, branch: string): Promise<string> {
-        const body = await this.json<{ commit: { sha: string } }>("GET", `/repos/${repo}/branches/${encodeURIComponent(branch)}`);
-        return body.commit.sha;
+    /** The commit a branch points at, and that commit's tree. */
+    async branchHead (repo: string, branch: string): Promise<{ sha: string; tree: string }> {
+        const body = await this.json<{ commit: { sha: string; commit: { tree: { sha: string } } } }>("GET", `/repos/${repo}/branches/${encodeURIComponent(branch)}`);
+        return { sha: body.commit.sha, tree: body.commit.commit.tree.sha };
     }
 
     /** The repo at a commit, as a gzipped tarball. */
@@ -73,6 +79,28 @@ export class GitHubClient {
         return response.status !== 409;
     }
 
+    /**
+     * One commit changing several files (`content: null` deletes), on top of
+     * `parent`, through the Git Data API. The branch moves only if it still
+     * points at `parent`: answers null when someone committed meanwhile, so
+     * the caller can start again from the new head.
+     */
+    async commitFiles (repo: string, input: { branch: string; parent: string; baseTree: string; message: string; files: FileChange[] }): Promise<{ sha: string; tree: string } | null> {
+        const tree = await this.json<{ sha: string }>("POST", `/repos/${repo}/git/trees`, {
+            base_tree: input.baseTree,
+            tree: input.files.map(file => file.content === null
+                ? { path: file.path, mode: "100644", type: "blob", sha: null }
+                : { path: file.path, mode: "100644", type: "blob", content: file.content })
+        });
+        const commit = await this.json<{ sha: string }>("POST", `/repos/${repo}/git/commits`, {
+            message: input.message,
+            tree: tree.sha,
+            parents: [input.parent]
+        });
+        const moved = await this.request("PATCH", `/repos/${repo}/git/refs/heads/${encodePath(input.branch)}`, { sha: commit.sha, force: false }, [409, 422]);
+        return moved.ok ? { sha: commit.sha, tree: tree.sha } : null;
+    }
+
     async createIssue (repo: string, input: { title: string; body: string }): Promise<{ number: number; htmlUrl: string }> {
         const body = await this.json<{ number: number; html_url: string }>("POST", `/repos/${repo}/issues`, input);
         return { number: body.number, htmlUrl: body.html_url };
@@ -107,4 +135,4 @@ const toBase64 = (content: string | Uint8Array) =>
     (typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content)).toString("base64");
 
 /** Each segment percent-encoded, the slashes kept. */
-const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
+export const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");

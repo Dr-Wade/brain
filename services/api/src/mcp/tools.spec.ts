@@ -1,7 +1,7 @@
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { NoteNotFoundError } from "../vault/vault.service.js";
+import { EditMismatchError, NoteNotFoundError, VaultRuleError } from "../vault/vault.service.js";
 import { createVaultMcpServer, type Vault } from "./tools.js";
 
 function fakeVault (): { [K in keyof Vault]: ReturnType<typeof vi.fn> } {
@@ -10,6 +10,13 @@ function fakeVault (): { [K in keyof Vault]: ReturnType<typeof vi.fn> } {
         search: vi.fn(async () => [{ path: "Notes/Paiements.md", title: "Paiements", snippet: "Suivi des paiements", score: 6 }]),
         read: vi.fn(async () => ({ path: "Notes/Paiements.md", title: "Paiements", content: "# Paiements", truncated: true })),
         inbox: vi.fn(async () => []),
+        list: vi.fn(async () => ({ folder: "Projects", notes: [{ path: "Projects/AG.md", title: "AG" }], folders: [{ path: "Projects/Site", notes: 2 }] })),
+        tasks: vi.fn(async () => [{ path: "Notes/Paiements.md", title: "Paiements", tasks: ["Relancer le trésorier", "Lister les impayés"] }]),
+        addNote: vi.fn(async () => ({ path: "Notes/Vote.md", url: "https://github.com/v" })),
+        edit: vi.fn(async () => ({ path: "Notes/Paiements.md", changed: true })),
+        append: vi.fn(async () => ({ path: "CA/Agenda.md" })),
+        move: vi.fn(async () => ({ from: "Inbox/x.md", to: "Notes/x.md", relinked: ["Home.md"] })),
+        remove: vi.fn(async () => ({ path: "Inbox/x.md" })),
         fileIssue: vi.fn(async () => ({ number: 7, url: "https://github.com/bcc-nancy/members/issues/7" }))
     };
 }
@@ -32,7 +39,10 @@ const call = (vault: ReturnType<typeof fakeVault>, name: string, args: unknown) 
 describe("the vault's MCP tools", () => {
     it("lists the tools, the issue tool only when repos are configured", async () => {
         const names = (repos: string[]) => rpc(fakeVault(), "tools/list", undefined, repos).then(answer => answer.result?.tools?.map(tool => tool.name));
-        expect(await names(["bcc-nancy/members"])).toEqual(["capture_idea", "search_notes", "read_note", "list_inbox", "file_for_atlas"]);
+        expect(await names(["bcc-nancy/members"])).toEqual([
+            "capture_idea", "search_notes", "read_note", "list_inbox", "list_notes", "open_tasks",
+            "create_note", "edit_note", "append_to_note", "move_note", "delete_note", "file_for_atlas"
+        ]);
         expect(await names([])).not.toContain("file_for_atlas");
     });
 
@@ -82,5 +92,35 @@ describe("the vault's MCP tools", () => {
         const refused = await call(vault, "file_for_atlas", { repo: "other/repo", title: "Track event payments", body: "Quote" });
         expect(refused.result?.isError ?? refused.error).toBeTruthy();
         expect(vault.fileIssue).toHaveBeenCalledTimes(1);
+    });
+
+    it("browses a folder and lists open tasks", async () => {
+        const vault = fakeVault();
+        expect((await call(vault, "list_notes", { folder: "Projects" })).result?.content?.[0]?.text).toBe("Projects: 1 notes, 1 folders\n📁 Projects/Site/ (2 notes)\n• AG — Projects/AG.md");
+        expect((await call(vault, "open_tasks", {})).result?.content?.[0]?.text).toBe("Paiements — Notes/Paiements.md\n- [ ] Relancer le trésorier\n- [ ] Lister les impayés");
+        vault.tasks.mockResolvedValueOnce([]);
+        expect((await call(vault, "open_tasks", { folder: "Meetings" })).result?.content?.[0]?.text).toBe("No open tasks in Meetings.");
+    });
+
+    it("creates, edits, adds to, moves and deletes notes", async () => {
+        const vault = fakeVault();
+        const text = async (name: string, args: unknown) => (await call(vault, name, args)).result?.content?.[0]?.text;
+        expect(await text("create_note", { path: "Notes/Vote", content: "# Vote" })).toBe("Created Notes/Vote.md (https://github.com/v).");
+        expect(await text("edit_note", { path: "Paiements", edits: [{ find: "même", replace: "Memento IT" }] })).toBe("Saved the change to Notes/Paiements.md.");
+        expect(vault.edit).toHaveBeenCalledWith("Paiements", [{ find: "même", replace: "Memento IT" }]);
+        expect(await text("append_to_note", { path: "CA/Agenda.md", text: "- Late fees", heading: "26 novembre" })).toBe("Added to CA/Agenda.md under \"26 novembre\".");
+        expect(vault.append).toHaveBeenCalledWith("CA/Agenda.md", "- Late fees", { heading: "26 novembre" });
+        expect(await text("move_note", { path: "Inbox/x.md", to: "Notes/" })).toBe("Moved Inbox/x.md → Notes/x.md. Links updated in Home.md.");
+        expect(await text("delete_note", { path: "Inbox/x.md" })).toBe("Deleted Inbox/x.md. Git history keeps it.");
+    });
+
+    it("gives the vault's refusals back as tool errors", async () => {
+        const vault = fakeVault();
+        vault.edit.mockRejectedValueOnce(new EditMismatchError("the text to find is not in the note."));
+        expect((await call(vault, "edit_note", { path: "x", edits: [{ find: "a", replace: "b" }] })).result).toMatchObject({ isError: true });
+        vault.remove.mockRejectedValueOnce(new VaultRuleError("Only inbox notes are deleted."));
+        expect((await call(vault, "delete_note", { path: "Notes/x.md" })).result).toMatchObject({ isError: true, content: [{ text: "Only inbox notes are deleted." }] });
+        expect((await call(vault, "edit_note", { path: "x", edits: [] })).result?.isError).toBe(true);
+        expect(vault.edit).toHaveBeenCalledTimes(1);
     });
 });

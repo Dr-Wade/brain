@@ -40,7 +40,7 @@ function fakeVault () {
     let captures = 0;
     return {
         capture: vi.fn(async (capture: { text: string; title?: string }) => ({ path: `Inbox/capture-${++captures}.md`, url: "u", title: capture.title ?? "Idea" })),
-        append: vi.fn(async () => undefined),
+        append: vi.fn(async (path: string) => ({ path })),
         saveAttachment: vi.fn(async (name: string) => `Attachments/2026-11-11 1402 ${name}`),
         search: vi.fn(async () => [{ path: "Notes/Paiements.md", title: "Paiements", snippet: "Suivi des paiements", score: 6 }]),
         inbox: vi.fn(async () => [{ path: "Inbox/a.md", title: "A", preview: "" }])
@@ -91,7 +91,7 @@ describe("TelegramService", () => {
         await send(forwardFrom("Bob", "D'accord"));
         expect(vault.capture).toHaveBeenCalledTimes(1);
         expect(vault.append).toHaveBeenCalledTimes(2);
-        expect(vault.append).toHaveBeenNthCalledWith(1, "Inbox/capture-1.md", expect.stringContaining("> **Alice** ·"), "Telegram: add to Décision du CA sur les cotisations");
+        expect(vault.append).toHaveBeenNthCalledWith(1, "Inbox/capture-1.md", expect.stringContaining("> **Alice** ·"), { message: "Telegram: add to Décision du CA sur les cotisations" });
         expect(telegram.sent.at(-1)?.text).toBe("➕ Added to “Décision du CA sur les cotisations”");
 
         advance(APPEND_WINDOW_MS + 1);

@@ -43,6 +43,19 @@ type Notifier = Pick<TelegramService, "notifyOwner" | "registerCommand">;
 
 /** How often the clock is checked against MEETINGS_RUN_AT. */
 const TICK_MS = 10 * 60 * 1000;
+/** How long the published calendar may take to answer. */
+const FEED_TIMEOUT_MS = 180_000;
+
+/**
+ * An error and its cause: fetch only says "fetch failed", the reason
+ * (ECONNRESET, a timeout) is in `cause`. Neither carries the feed's URL.
+ */
+function reasonOf (error: unknown): string {
+    const { message, cause } = error as Error & { cause?: { code?: string; message?: string } };
+    const reason = cause?.code ?? cause?.message;
+    return reason ? `${message} (${reason})` : message;
+}
+
 /** The published calendar is fetched again after this. */
 const FEED_TTL_MS = 10 * 60 * 1000;
 const DAY_MS = 86_400_000;
@@ -112,7 +125,7 @@ export class MeetingsService implements OnModuleInit, OnApplicationBootstrap, On
         } catch (error) {
             // Released, so the next tick tries again.
             await this.log.release(key);
-            this.logger.error(`Meeting pass ${date} failed: ${(error as Error).message}`);
+            this.logger.error(`Meeting pass ${date} failed: ${reasonOf(error)}`);
         }
     }
 
@@ -226,7 +239,8 @@ export class MeetingsService implements OnModuleInit, OnApplicationBootstrap, On
             return [];
         }
         if (!this.feed || this.now().getTime() - this.feed.at > FEED_TTL_MS) {
-            const response = await this.fetchImpl(url);
+            // Outlook's published feed can take minutes to answer, or hang.
+            const response = await this.fetchImpl(url, { signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
             if (!response.ok) {
                 // Never the URL: anyone holding it reads the calendar.
                 throw new Error(`The published calendar answered ${response.status}`);
