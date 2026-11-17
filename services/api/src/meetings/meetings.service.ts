@@ -1,9 +1,9 @@
 import { Logger, type OnApplicationBootstrap, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 
-import type { AppConfig } from "../config/app-config.js";
+import { calendarUrls, type AppConfig } from "../config/app-config.js";
 import type { TelegramService } from "../telegram/telegram.service.js";
 import type { FetchLike } from "../vault/github.js";
-import { zonedParts, type Note } from "../vault/notes.js";
+import { fold, zonedParts, type Note } from "../vault/notes.js";
 import type { VaultService } from "../vault/vault.service.js";
 import { occurrencesBetween, type Occurrence } from "./calendar.js";
 import {
@@ -35,6 +35,14 @@ export interface UpcomingMeeting {
     when: string
     location?: string
     prepNote?: string
+    prep?: { done: number; total: number }
+}
+
+/** A meeting of one day, for the morning brief. */
+export interface DayMeeting {
+    /** "10:00", or "All day". */
+    time: string
+    title: string
     prep?: { done: number; total: number }
 }
 
@@ -71,7 +79,8 @@ export class MeetingsService implements OnModuleInit, OnApplicationBootstrap, On
     private readonly fetchImpl: FetchLike;
     private readonly now: () => Date;
     private timer?: NodeJS.Timeout;
-    private feed?: { ics: string; at: number };
+    /** Each published calendar's last answer, by link. */
+    private readonly feeds = new Map<string, { ics: string; at: number }>();
 
     constructor (
         private readonly config: AppConfig,
@@ -86,7 +95,7 @@ export class MeetingsService implements OnModuleInit, OnApplicationBootstrap, On
     }
 
     get configured (): boolean {
-        return Boolean(this.config.env.CALENDAR_ICS_URL);
+        return calendarUrls(this.config.env).length > 0;
     }
 
     onModuleInit (): void {
@@ -206,6 +215,28 @@ export class MeetingsService implements OnModuleInit, OnApplicationBootstrap, On
             });
     }
 
+    /** The meetings of one day (`2026-11-18`, in the vault's zone), all-day ones first. */
+    async onDay (date: string): Promise<DayMeeting[]> {
+        const timeZone = this.config.env.VAULT_TIMEZONE;
+        const noon = Date.parse(`${date}T12:00:00Z`);
+        const [occurrences, notes] = await Promise.all([
+            this.occurrences(new Date(noon - 1.5 * DAY_MS), new Date(noon + 1.5 * DAY_MS)),
+            this.vault.notesUnder("Meetings")
+        ]);
+        return occurrences
+            .filter(occurrence => !occurrence.cancelled && zonedParts(occurrence.start, timeZone).date === date)
+            .sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.start.getTime() - b.start.getTime())
+            .map(occurrence => {
+                const note = notes.find(candidate => candidate.path === prepPath(occurrence, timeZone));
+                const time = zonedParts(occurrence.start, timeZone).time;
+                return {
+                    time: occurrence.allDay ? "All day" : `${time.slice(0, 2)}:${time.slice(2)}`,
+                    title: occurrence.title,
+                    prep: note ? prepProgress(note.content) : undefined
+                };
+            });
+    }
+
     private async nextCommand (): Promise<string> {
         const meetings = await this.upcoming(7);
         if (meetings.length === 0) {
@@ -233,20 +264,60 @@ export class MeetingsService implements OnModuleInit, OnApplicationBootstrap, On
         return false;
     }
 
+    /**
+     * The occurrences in [from, to) across every published calendar. A meeting
+     * on two of them (same title, same start) counts once. A calendar that does
+     * not answer is left out, with its last answer used when there is one;
+     * when none answers, it throws.
+     */
     private async occurrences (from: Date, to: Date): Promise<Occurrence[]> {
-        const url = this.config.env.CALENDAR_ICS_URL;
-        if (!url) {
-            return [];
+        const urls = calendarUrls(this.config.env);
+        const results = await Promise.allSettled(urls.map(url => this.feed(url)));
+        const answered = results.flatMap(result => (result.status === "fulfilled" ? [result.value] : []));
+        results.forEach((result, index) => {
+            if (result.status === "rejected") {
+                // By position, never the URL: anyone holding it reads the calendar.
+                this.logger.warn(`Calendar ${index + 1} of ${urls.length} failed: ${reasonOf(result.reason)}`);
+            }
+        });
+        if (urls.length > 0 && answered.length === 0) {
+            throw (results[0] as PromiseRejectedResult).reason;
         }
-        if (!this.feed || this.now().getTime() - this.feed.at > FEED_TTL_MS) {
+        const seen = new Set<string>();
+        return answered
+            .flatMap(ics => occurrencesBetween(ics, from, to))
+            .sort((a, b) => a.start.getTime() - b.start.getTime())
+            .filter(occurrence => {
+                const key = `${fold(occurrence.title).trim()}|${occurrence.start.getTime()}`;
+                if (seen.has(key)) {
+                    return false;
+                }
+                seen.add(key);
+                return true;
+            });
+    }
+
+    /** One calendar's ICS, fetched again after FEED_TTL_MS; its last answer when it fails. */
+    private async feed (url: string): Promise<string> {
+        const cached = this.feeds.get(url);
+        if (cached && this.now().getTime() - cached.at <= FEED_TTL_MS) {
+            return cached.ics;
+        }
+        try {
             // Outlook's published feed can take minutes to answer, or hang.
             const response = await this.fetchImpl(url, { signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
             if (!response.ok) {
-                // Never the URL: anyone holding it reads the calendar.
                 throw new Error(`The published calendar answered ${response.status}`);
             }
-            this.feed = { ics: await response.text(), at: this.now().getTime() };
+            const ics = await response.text();
+            this.feeds.set(url, { ics, at: this.now().getTime() });
+            return ics;
+        } catch (error) {
+            if (cached) {
+                this.logger.warn(`A calendar did not answer (${reasonOf(error)}); using its copy from ${new Date(cached.at).toISOString()}`);
+                return cached.ics;
+            }
+            throw error;
         }
-        return occurrencesBetween(this.feed.ics, from, to);
     }
 }

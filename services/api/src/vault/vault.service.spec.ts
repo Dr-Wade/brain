@@ -66,6 +66,11 @@ function fakeGitHub (initial: Record<string, string>, options: { taken?: string[
             tarballs.set(head.sha, tarball);
             return new Response(tarball);
         }
+        if (method === "GET" && path.startsWith(`${repo}/contents/`)) {
+            const content = files.get(path.slice(`${repo}/contents/`.length));
+            expect(headers.get("accept")).toBe("application/vnd.github.raw+json");
+            return content === undefined ? Response.json({ message: "Not Found" }, { status: 404 }) : new Response(content);
+        }
         if (method === "PUT" && path.startsWith(`${repo}/contents/`)) {
             const filePath = path.slice(`${repo}/contents/`.length);
             if (files.has(filePath) || options.taken?.includes(filePath)) {
@@ -378,5 +383,39 @@ describe("the GitHub allowlist", () => {
         expect(isAllowedGithubAccount(1, "38118787")).toBe(false);
         expect(isAllowedGithubAccount(undefined, "38118787")).toBe(false);
         expect(isAllowedGithubAccount(38118787, undefined)).toBe(false);
+    });
+
+    it("commits a module's change on top of the head, with the vault's rules", async () => {
+        const github = fakeGitHub(notes);
+        const subject = service(github);
+        const result = await subject.change(all => ({
+            message: "To-do: Faire la facturation",
+            files: [{ path: "Tasks.md", content: `# Tasks\n\n- [ ] Faire la facturation (${all.length} notes)\n` }],
+            result: "ok"
+        }));
+        expect(result).toBe("ok");
+        expect(github.files.get("Tasks.md")).toMatch(/^# Tasks\n\n- \[ \] Faire la facturation \(\d+ notes\)\n$/);
+        expect((await subject.notes()).some(note => note.path === "Tasks.md")).toBe(true);
+        await expect(subject.change(() => ({ message: "x", files: [{ path: "Archive/Notion/Old.md", content: "x" }], result: 1 }))).rejects.toThrow(/read-only/);
+    });
+
+    it("reads the glossary's lines and bold names, again only once it changes", async () => {
+        const github = fakeGitHub({ ...notes, "Glossary.md": "# Glossary\n\n- **Memento IT**: ma structure (dictée : « même »)\n- **BCC Nancy**: l'association\n\nNot a line." });
+        const subject = service(github);
+        expect(await subject.glossary()).toEqual({
+            lines: ["**Memento IT**: ma structure (dictée : « même »)", "**BCC Nancy**: l'association"],
+            terms: ["Memento IT", "BCC Nancy"]
+        });
+        expect(await service(fakeGitHub(notes)).glossary()).toEqual({ lines: [], terms: [] });
+    });
+
+    it("reads an attachment straight from GitHub, a bare name from Attachments/", async () => {
+        const github = fakeGitHub({ ...notes, "Attachments/2026-11-15 1852 photo.jpg": "JPEG" });
+        const subject = service(github);
+        const file = await subject.readFile("![[2026-11-15 1852 photo.jpg]]");
+        expect(file.path).toBe("Attachments/2026-11-15 1852 photo.jpg");
+        expect(new TextDecoder().decode(file.bytes)).toBe("JPEG");
+        await expect(subject.readFile("Attachments/nope.pdf")).rejects.toThrow("No file at \"Attachments/nope.pdf\".");
+        await expect(subject.readFile(".github/workflows/x.yml")).rejects.toThrow(/not a file path/);
     });
 });

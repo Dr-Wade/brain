@@ -21,6 +21,12 @@ export class NoteNotFoundError extends VaultError {
     }
 }
 
+export class FileNotFoundError extends VaultError {
+    constructor (path: string) {
+        super(`No file at "${path}".`);
+    }
+}
+
 export class RepoNotAllowedError extends VaultError {
     constructor (repo: string, allowed: string[]) {
         super(`Issues can only be filed on: ${allowed.join(", ") || "(none configured)"}. Not on "${repo}".`);
@@ -32,3 +38,10 @@ export class VaultRuleError extends VaultError {}
 
 /** An edit whose text to find is missing from the note, or there more than once. */
 export class EditMismatchError extends VaultError {}
+
+/** No open to-do with these words. */
+export class TaskNotFoundError extends VaultError {
+    constructor (text: string) {
+        super(`No open to-do matches "${text}". open_tasks lists them as they are written.`);
+    }
+}

@@ -19,7 +19,8 @@ import {
     type Edit,
     type FolderListing
 } from "./editing.js";
-import { NotConfiguredError, RepoNotAllowedError, VaultRuleError } from "./errors.js";
+import { FileNotFoundError, NotConfiguredError, RepoNotAllowedError, VaultRuleError } from "./errors.js";
+import { GLOSSARY_PATH, parseGlossary, type Glossary } from "./glossary.js";
 import { encodePath, GitHubClient, type FetchLike, type FileChange } from "./github.js";
 import {
     captureMarkdown,
@@ -36,7 +37,7 @@ import {
 } from "./notes.js";
 import { readTarGz } from "./tar.js";
 
-export { EditMismatchError, NoteNotFoundError, NotConfiguredError, RepoNotAllowedError, VaultError, VaultRuleError } from "./errors.js";
+export { EditMismatchError, FileNotFoundError, NoteNotFoundError, NotConfiguredError, RepoNotAllowedError, TaskNotFoundError, VaultError, VaultRuleError } from "./errors.js";
 
 /** A note is read whole up to this; longer ones are cut, saying so. */
 const READ_LIMIT = 20_000;
@@ -53,7 +54,7 @@ interface Snapshot {
 }
 
 /** What a change computed from the head commits, and what it answers. */
-interface Change<T> {
+export interface Change<T> {
     message: string
     files: FileChange[]
     result: T
@@ -71,6 +72,7 @@ export class VaultService {
     private snapshot?: Snapshot;
     private headCheckedAt = 0;
     private loading?: Promise<Snapshot>;
+    private glossaryCache?: { sha: string; glossary: Glossary };
 
     constructor (
         @Inject(AppConfig) private readonly config: AppConfig,
@@ -202,6 +204,57 @@ export class VaultService {
             assertDeletable(note.path);
             return { message: `Delete: ${fileName(note.path)}`, files: [{ path: note.path, content: null }], result: { path: note.path } };
         });
+    }
+
+    /** Every note at the branch head. */
+    async notes (): Promise<Note[]> {
+        const { notes } = await this.load();
+        return notes;
+    }
+
+    /**
+     * A change computed from the notes at the branch head, committed on top of
+     * it (started again if the branch moved). For modules with their own notes
+     * (Tasks.md); the vault's path rules still apply to every file written.
+     */
+    async change<T> (compute: (notes: Note[]) => Change<T>): Promise<T> {
+        return await this.commit(({ notes }) => {
+            const change = compute(notes);
+            for (const file of change.files) {
+                assertWritable(file.path);
+            }
+            return change;
+        });
+    }
+
+    /**
+     * Names Edward uses, from Glossary.md: its list lines for Claude, and the
+     * bold names for the transcription of voice notes.
+     */
+    async glossary (): Promise<Glossary> {
+        const { notes, sha } = await this.load();
+        if (this.glossaryCache?.sha !== sha) {
+            this.glossaryCache = { sha, glossary: parseGlossary(notes.find(note => note.path === GLOSSARY_PATH)?.content) };
+        }
+        return this.glossaryCache.glossary;
+    }
+
+    /**
+     * A file that is not a note (a photo, a PDF), straight from GitHub: the
+     * tarball leaves binaries out. A bare name is looked for in Attachments/.
+     */
+    async readFile (path: string): Promise<{ path: string; bytes: Uint8Array }> {
+        const { repo, branch, client } = this.vault();
+        const asked = path.trim().replace(/^!?\[\[|\]\]$/g, "").replace(/\|.*$/, "").replace(/^\/+/, "").normalize("NFC");
+        const target = asked.includes("/") ? asked : `Attachments/${asked}`;
+        if (!asked || target.split("/").some(segment => !segment.trim() || segment.startsWith("."))) {
+            throw new VaultRuleError(`"${path}" is not a file path in the vault.`);
+        }
+        const bytes = await client.getRaw(repo, target, branch);
+        if (!bytes) {
+            throw new FileNotFoundError(target);
+        }
+        return { path: target, bytes };
     }
 
     /** The notes and subfolders of one folder ("" for the top). */

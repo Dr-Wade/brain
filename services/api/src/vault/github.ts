@@ -65,6 +65,15 @@ export class GitHubClient {
         return { sha: body.sha, content: Buffer.from(body.content, "base64").toString("utf8") };
     }
 
+    /** A file's bytes at a branch, any size up to GitHub's 100 MB, or null when there is none. */
+    async getRaw (repo: string, path: string, branch: string): Promise<Uint8Array | null> {
+        const response = await this.request("GET", `/repos/${repo}/contents/${encodePath(path)}?ref=${encodeURIComponent(branch)}`, undefined, [404], "application/vnd.github.raw+json");
+        if (response.status === 404) {
+            return null;
+        }
+        return new Uint8Array(await response.arrayBuffer());
+    }
+
     /**
      * Replaces a file whose blob sha is known. Answers false when it changed
      * since (409), so the caller can read it again and retry.
@@ -111,11 +120,11 @@ export class GitHubClient {
         return await response.json() as T;
     }
 
-    private async request (method: string, path: string, body?: unknown, allowed: number[] = []): Promise<Response> {
+    private async request (method: string, path: string, body?: unknown, allowed: number[] = [], accept = "application/vnd.github+json"): Promise<Response> {
         const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
             method,
             headers: {
-                "Accept": "application/vnd.github+json",
+                "Accept": accept,
                 "Authorization": `Bearer ${this.token}`,
                 "User-Agent": "brain-connector",
                 "X-GitHub-Api-Version": "2022-11-28",

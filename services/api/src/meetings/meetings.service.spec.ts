@@ -138,4 +138,51 @@ describe("MeetingsService", () => {
         service.onModuleInit();
         expect(notifier.registerCommand).toHaveBeenCalledWith("next", expect.objectContaining({ description: expect.any(String) }));
     });
+
+    it("reads several calendars, a meeting on two of them once, and gets by when one fails", async () => {
+        // A Google calendar in UTC: the CA again (on both calendars), and a Ådalen meeting.
+        const google = [
+            "BEGIN:VCALENDAR", "VERSION:2.0",
+            "BEGIN:VEVENT", "UID:g-ca", "SUMMARY:CA", "DTSTART:20261111T170000Z", "DTEND:20261111T190000Z", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:g-adalen", "SUMMARY:Ådalen status", "DTSTART:20261111T090000Z", "DTEND:20261111T100000Z", "END:VEVENT",
+            "END:VCALENDAR", ""
+        ].join("\r\n");
+        let googleUp = true;
+        const fetchImpl = vi.fn(async (url: string) => {
+            if (url.includes("google")) {
+                return googleUp ? new Response(google) : new Response("", { status: 503 });
+            }
+            return new Response(OUTLOOK_ICS);
+        });
+        let now = new Date("2026-11-11T06:30:00Z");
+        const notes: Note[] = [{ path: "Meetings/2026-11-11 1000 Ådalen status.md", content: "## To prepare\n\n- [x] Chiffres\n- [ ] Démo" }];
+        const service = new MeetingsService(
+            new AppConfig({ DATABASE_URL: "postgresql://unused@localhost/x", CALENDAR_ICS_URL: "https://outlook.example/a.ics,\nhttps://google.example/b.ics" }),
+            { notesUnder: vi.fn(async () => notes), createNote: vi.fn(), search: vi.fn(async () => []) },
+            { notifyOwner: vi.fn(async () => true), registerCommand: vi.fn() },
+            { claim: async () => true, release: async () => undefined },
+            { fetchImpl, now: () => now }
+        );
+        expect(service.configured).toBe(true);
+        expect(await service.onDay("2026-11-11")).toEqual([
+            { time: "All day", title: "Armistice", prep: undefined },
+            { time: "10:00", title: "Ådalen status", prep: { done: 1, total: 2 } },
+            { time: "18:00", title: "CA", prep: undefined }
+        ]);
+        expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+        // Google down past the cache: its last answer stands in.
+        googleUp = false;
+        now = new Date("2026-11-11T07:00:00Z");
+        expect((await service.upcoming(1)).map(meeting => meeting.title)).toEqual(["Ådalen status", "CA"]);
+        // Never answered at all: left out, the other calendar still read.
+        const fresh = new MeetingsService(
+            new AppConfig({ DATABASE_URL: "postgresql://unused@localhost/x", CALENDAR_ICS_URL: "https://outlook.example/a.ics https://google.example/b.ics" }),
+            { notesUnder: vi.fn(async () => []), createNote: vi.fn(), search: vi.fn(async () => []) },
+            { notifyOwner: vi.fn(async () => true), registerCommand: vi.fn() },
+            { claim: async () => true, release: async () => undefined },
+            { fetchImpl, now: () => now }
+        );
+        expect((await fresh.upcoming(1)).map(meeting => meeting.title)).toEqual(["CA"]);
+    });
 });

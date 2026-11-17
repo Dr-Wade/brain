@@ -37,8 +37,9 @@ ENV NODE_ENV=production APP_VERSION=${APP_VERSION} API_PORT=3000
 WORKDIR /app
 COPY --from=build --chown=node:node /out/api ./
 # Checked in the final image: a workspace package that did not make it into
-# the pruned tree fails the build here, not at the first request.
-RUN node --input-type=module -e "await import('@brain/database'); await import('@brain/schemas'); await import('@brain/logger')"
+# the pruned tree, or sharp without its Alpine (musl) binary, fails the build
+# here, not at the first request.
+RUN node --input-type=module -e "await import('@brain/database'); await import('@brain/schemas'); await import('@brain/logger'); const { default: sharp } = await import('sharp'); await sharp({ create: { width: 2, height: 2, channels: 3, background: '#fff' } }).jpeg().toBuffer()"
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s \

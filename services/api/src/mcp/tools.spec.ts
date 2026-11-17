@@ -2,7 +2,7 @@ import { createMcpHandler } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { EditMismatchError, NoteNotFoundError, VaultRuleError } from "../vault/vault.service.js";
-import { createVaultMcpServer, type Vault } from "./tools.js";
+import { createVaultMcpServer, type Tasks, type Vault } from "./tools.js";
 
 function fakeVault (): { [K in keyof Vault]: ReturnType<typeof vi.fn> } {
     return {
@@ -17,13 +17,14 @@ function fakeVault (): { [K in keyof Vault]: ReturnType<typeof vi.fn> } {
         append: vi.fn(async () => ({ path: "CA/Agenda.md" })),
         move: vi.fn(async () => ({ from: "Inbox/x.md", to: "Notes/x.md", relinked: ["Home.md"] })),
         remove: vi.fn(async () => ({ path: "Inbox/x.md" })),
-        fileIssue: vi.fn(async () => ({ number: 7, url: "https://github.com/bcc-nancy/members/issues/7" }))
+        fileIssue: vi.fn(async () => ({ number: 7, url: "https://github.com/bcc-nancy/members/issues/7" })),
+        readFile: vi.fn(async (path: string) => ({ path, bytes: new TextEncoder().encode("Prix : 14,56 €") }))
     };
 }
 
 /** One JSON-RPC call through the same handler production serves, unauthenticated here. */
-async function rpc (vault: ReturnType<typeof fakeVault>, method: string, params?: unknown, issueRepos = ["bcc-nancy/members"]) {
-    const handler = createMcpHandler(() => createVaultMcpServer(vault as unknown as Vault, { issueRepos, version: "test" }));
+async function rpc (vault: ReturnType<typeof fakeVault>, method: string, params?: unknown, issueRepos = ["bcc-nancy/members"], extra: { tasks?: Tasks; glossary?: string } = {}) {
+    const handler = createMcpHandler(() => createVaultMcpServer(vault as unknown as Vault, { issueRepos, version: "test", ...extra }));
     const response = await handler.fetch(new Request("http://localhost/api/mcp", {
         method: "POST",
         headers: { "content-type": "application/json", "accept": "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" },
@@ -31,7 +32,7 @@ async function rpc (vault: ReturnType<typeof fakeVault>, method: string, params?
     }));
     const text = await response.text();
     const data = text.split("\n").find(line => line.startsWith("data: "))?.slice(6) ?? text;
-    return JSON.parse(data) as { result?: { tools?: { name: string }[]; content?: { text: string }[]; isError?: boolean }; error?: unknown };
+    return JSON.parse(data) as { result?: { tools?: { name: string }[]; content?: { type: string; text: string; data?: string; mimeType?: string }[]; isError?: boolean; instructions?: string }; error?: unknown };
 }
 
 const call = (vault: ReturnType<typeof fakeVault>, name: string, args: unknown) => rpc(vault, "tools/call", { name, arguments: args });
@@ -41,7 +42,7 @@ describe("the vault's MCP tools", () => {
         const names = (repos: string[]) => rpc(fakeVault(), "tools/list", undefined, repos).then(answer => answer.result?.tools?.map(tool => tool.name));
         expect(await names(["bcc-nancy/members"])).toEqual([
             "capture_idea", "search_notes", "read_note", "list_inbox", "list_notes", "open_tasks",
-            "create_note", "edit_note", "append_to_note", "move_note", "delete_note", "file_for_atlas"
+            "create_note", "edit_note", "append_to_note", "move_note", "delete_note", "read_attachment", "file_for_atlas"
         ]);
         expect(await names([])).not.toContain("file_for_atlas");
     });
@@ -122,5 +123,40 @@ describe("the vault's MCP tools", () => {
         expect((await call(vault, "delete_note", { path: "Notes/x.md" })).result).toMatchObject({ isError: true, content: [{ text: "Only inbox notes are deleted." }] });
         expect((await call(vault, "edit_note", { path: "x", edits: [] })).result?.isError).toBe(true);
         expect(vault.edit).toHaveBeenCalledTimes(1);
+    });
+
+    it("adds, ticks and moves to-dos, and lists what is due", async () => {
+        const vault = fakeVault();
+        const tasks = {
+            add: vi.fn(async (items: string[]) => ({ path: "Tasks.md", items })),
+            complete: vi.fn(async (task: string) => ({ path: "Tasks.md", text: task })),
+            setDue: vi.fn(async (items: string[]) => ({ found: items.slice(0, 1), missing: items.slice(1) }))
+        };
+        const text = async (name: string, args: unknown) => (await rpc(vault, "tools/call", { name, arguments: args }, [], { tasks })).result?.content?.[0]?.text;
+        const names = (await rpc(vault, "tools/list", undefined, [], { tasks })).result?.tools?.map(tool => tool.name);
+        expect(names).toEqual(expect.arrayContaining(["add_task", "complete_task", "reschedule_task"]));
+
+        expect(await text("add_task", { tasks: ["Faire la facturation"], due: "2026-11-18" })).toBe("Added to Tasks.md, for Wed 18 Nov:\n- [ ] Faire la facturation");
+        expect(tasks.add).toHaveBeenCalledWith(["Faire la facturation"], "2026-11-18");
+        expect(await text("add_task", { tasks: ["Ranger"], due: null })).toBe("Added to Tasks.md, with no day:\n- [ ] Ranger");
+        expect((await rpc(vault, "tools/call", { name: "add_task", arguments: { tasks: ["x"], due: "demain" } }, [], { tasks })).result?.isError).toBe(true);
+        expect(await text("complete_task", { task: "Ranger" })).toBe("Ticked \"Ranger\" in Tasks.md.");
+        expect(await text("reschedule_task", { tasks: ["A", "B"], due: "2026-11-20" })).toBe("Now for Fri 20 Nov: A.\nNot found among the open tasks: B.");
+
+        vault.tasks.mockResolvedValueOnce([{ path: "Tasks.md", title: "Tasks", tasks: ["A 📅 2026-11-17", "B 📅 2026-11-19", "C"] }]);
+        expect(await text("open_tasks", { until: "2026-11-18" })).toBe("Tasks — Tasks.md\n- [ ] A 📅 2026-11-17");
+    });
+
+    it("shows a text attachment, and carries the glossary in its instructions", async () => {
+        const vault = fakeVault();
+        const shown = await call(vault, "read_attachment", { path: "Prix.txt" });
+        expect(vault.readFile).toHaveBeenCalledWith("Prix.txt");
+        expect(shown.result?.content?.[0]?.text).toBe("Prix.txt\n\nPrix : 14,56 €");
+        vault.readFile.mockResolvedValueOnce({ path: "Attachments/broken.jpg", bytes: new Uint8Array([1, 2, 3]) });
+        const broken = await call(vault, "read_attachment", { path: "broken.jpg" });
+        expect(broken.result).toMatchObject({ isError: true, content: [{ text: expect.stringMatching(/^Could not open Attachments\/broken\.jpg: /) }] });
+
+        const init = await rpc(vault, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } }, [], { glossary: "\n- Names: **Memento IT**" });
+        expect(init.result?.instructions).toMatch(/Archive\/Notion is read-only[\s\S]*\n- Names: \*\*Memento IT\*\*$/);
     });
 });

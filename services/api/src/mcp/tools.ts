@@ -2,24 +2,34 @@ import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 import type { MeetingsService } from "../meetings/meetings.service.js";
+import type { TasksService } from "../tasks/tasks.service.js";
+import { shortDay } from "../tasks/when.js";
 import { MAX_NOTE_LENGTH } from "../vault/editing.js";
 import { SUGGESTIONS } from "../vault/notes.js";
 import { VaultError, type VaultService } from "../vault/vault.service.js";
+import { attachmentContent } from "./attachments.js";
 
 /** What the tools need from the vault; a fake in tests. */
-export type Vault = Pick<VaultService, "capture" | "search" | "read" | "inbox" | "list" | "tasks" | "addNote" | "edit" | "append" | "move" | "remove" | "fileIssue">;
+export type Vault = Pick<VaultService, "capture" | "search" | "read" | "inbox" | "list" | "tasks" | "addNote" | "edit" | "append" | "move" | "remove" | "fileIssue" | "readFile">;
 /** The calendar side; absent when no calendar is published. */
 export type Meetings = Pick<MeetingsService, "upcoming">;
+/** Edward's to-dos (Tasks.md). */
+export type Tasks = Pick<TasksService, "add" | "complete" | "setDue">;
 
 const INSTRUCTIONS = `Edward's second brain: an Obsidian vault in French and English, in git (every change is a commit; nothing is lost).
 - Capture: when Edward shares an idea, a thought to keep, or says "note that" / "note ça", call capture_idea with his own words. Do not wait for the end of the conversation.
-- Find: before answering about something he may have written down, search_notes, then read_note on the best hits. list_notes browses a folder; open_tasks lists what is still to do.
+- To-dos: something he has to do ("à faire", "to-do", "rappelle-moi de…") goes to add_task, not capture_idea, one task per action, in his words. If he did not say when, ask "pour quand ?" (today, tomorrow, a day, or no date) before adding it. complete_task ticks one, reschedule_task gives it another day; open_tasks with "until" lists what is due. The Brain bot sends him the day's list every morning.
+- Find: before answering about something he may have written down, search_notes, then read_note on the best hits. list_notes browses a folder. An embed in a note (![[Attachments/…]]) is a photo or a file: read_attachment shows it.
 - Change: read_note first. edit_note corrects a word, ticks a task or rewrites a passage; append_to_note adds to the end of a note or of a section; create_note makes a note outside the inbox. To fix a capture, edit it: never save a corrected copy. Keep Edward's words: add structure around them, do not rewrite them away. Say what you changed.
 - Links are wikilinks to file names: [[Paiements des événements]]. Link a new note to a related one when there is one.
-- Weekly sort (list_inbox): propose one destination per note as a numbered list (note, issue, ca-agenda, bin) and wait for his answer. Then note → move_note to Notes/ or a project folder; issue → file_for_atlas, then delete_note; ca-agenda → append_to_note on CA/Agenda.md, then delete_note; bin → delete_note.
-- Meetings: upcoming_meetings, then read_note on its prep note, then search_notes (and his Drive, when that connector is on) for what it needs. Work through "To prepare" with him, ticking what is done. After the meeting, append_to_note under "Notes", "Decisions" and "Actions" ("- [ ] who: what, by when"). Do not invent decisions.
+- Weekly sort (list_inbox): propose one destination per note as a numbered list (note, task, issue, ca-agenda, bin) and wait for his answer. Then note → move_note to Notes/ or a project folder; task → add_task (ask for when), then delete_note; issue → file_for_atlas, then delete_note; ca-agenda → append_to_note on CA/Agenda.md, then delete_note; bin → delete_note.
+- Meetings: upcoming_meetings, then read_note on its prep note, then search_notes (and his Drive, when that connector is on) for what it needs. Work through "To prepare" with him, ticking what is done. After the meeting, append_to_note under "Notes", "Decisions" and "Actions" ("- [ ] who: what 📅 YYYY-MM-DD"; Edward's own actions with a day are in his morning list). Do not invent decisions.
+- Decisions of the BCC Nancy board (CA): each also gets a row in the register CA/Décisions.md, with append_to_note: "| YYYY-MM-DD | the decision | who carries it | [[the meeting note]] |".
 - Archive/Notion is read-only; meeting notes never move.
 - file_for_atlas opens a GitHub issue for software work. Only when Edward asks for an issue, and after reading the title back to him.`;
+
+/** A day as the vault writes it. */
+const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
 
 const text = (value: string): CallToolResult => ({ content: [{ type: "text", text: value }] });
 
@@ -35,8 +45,8 @@ async function answer (run: () => Promise<string>): Promise<CallToolResult> {
     }
 }
 
-export function createVaultMcpServer (vault: Vault, options: { issueRepos: string[]; version: string; meetings?: Meetings }): McpServer {
-    const server = new McpServer({ name: "brain", title: "Edward's vault", version: options.version }, { instructions: INSTRUCTIONS });
+export function createVaultMcpServer (vault: Vault, options: { issueRepos: string[]; version: string; meetings?: Meetings; tasks?: Tasks; glossary?: string }): McpServer {
+    const server = new McpServer({ name: "brain", title: "Edward's vault", version: options.version }, { instructions: INSTRUCTIONS + (options.glossary ?? "") });
 
     server.registerTool("capture_idea", {
         title: "Capture an idea",
@@ -118,15 +128,20 @@ export function createVaultMcpServer (vault: Vault, options: { issueRepos: strin
 
     server.registerTool("open_tasks", {
         title: "Open tasks",
-        description: "Unticked tasks (\"- [ ]\" lines) across the vault or in one folder, by note: meeting actions, project to-dos, prep still to do. Templates and the archive are left out.",
+        description: "Unticked tasks (\"- [ ]\" lines) across the vault or in one folder, by note: Edward's to-dos (Tasks.md), meeting actions, prep still to do. A task's day is its \"📅 YYYY-MM-DD\". Templates and the archive are left out.",
         inputSchema: z.object({
-            folder: z.string().max(300).optional().describe("Only this folder, e.g. \"Meetings\" or \"Projects\". Empty for the whole vault.")
+            folder: z.string().max(300).optional().describe("Only this folder, e.g. \"Meetings\" or \"Projects\". Empty for the whole vault."),
+            until: DAY.optional().describe("Only tasks due on or before this day (YYYY-MM-DD): today's date for what is due today and late.")
         }),
         annotations: { readOnlyHint: true, openWorldHint: false }
-    }, async ({ folder }) => answer(async () => {
-        const notes = await vault.tasks(folder);
+    }, async ({ folder, until }) => answer(async () => {
+        const due = (task: string) => /📅\uFE0F?\s*(\d{4}-\d{2}-\d{2})/u.exec(task)?.[1];
+        const notes = (await vault.tasks(folder))
+            .map(note => ({ ...note, tasks: until ? note.tasks.filter(task => (due(task) ?? "9999") <= until) : note.tasks }))
+            .filter(note => note.tasks.length > 0);
         if (notes.length === 0) {
-            return folder ? `No open tasks in ${folder}.` : "No open tasks in the vault.";
+            const scope = `${folder ? ` in ${folder}` : " in the vault"}${until ? ` due by ${until}` : ""}`;
+            return `No open tasks${scope}.`;
         }
         const lines: string[] = [];
         let count = 0;
@@ -209,6 +224,73 @@ export function createVaultMcpServer (vault: Vault, options: { issueRepos: strin
         const deleted = await vault.remove(path);
         return `Deleted ${deleted.path}. Git history keeps it.`;
     }));
+
+    const tasks = options.tasks;
+    if (tasks) {
+        server.registerTool("add_task", {
+            title: "Add a to-do",
+            description: "Add Edward's to-dos to Tasks.md, each with its day; they are in his morning list on that day. Ask him for when first if he did not say. One task per action, in his words.",
+            inputSchema: z.object({
+                tasks: z.array(z.string().min(1).max(500)).min(1).max(20).describe("The to-dos, one action each: \"Faire la facturation\"."),
+                due: DAY.nullable().describe("The day (YYYY-MM-DD) they are for, worked out from what he said (\"demain\", \"vendredi\"). null only when he says no date.")
+            }),
+            annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+        }, async ({ tasks: items, due }) => answer(async () => {
+            const saved = await tasks.add(items, due);
+            return `Added to ${saved.path}, ${due ? `for ${shortDay(due)}` : "with no day"}:\n${saved.items.map(item => `- [ ] ${item}`).join("\n")}`;
+        }));
+
+        server.registerTool("complete_task", {
+            title: "Tick a to-do",
+            description: "Mark an open task done (✅ and today's date), in Tasks.md or any note: give its words as open_tasks shows them.",
+            inputSchema: z.object({
+                task: z.string().min(1).max(500).describe("The task's words, without the \"- [ ]\" and its date.")
+            }),
+            annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+        }, async ({ task }) => answer(async () => {
+            const done = await tasks.complete(task);
+            return `Ticked "${done.text}" in ${done.path}.`;
+        }));
+
+        server.registerTool("reschedule_task", {
+            title: "Change a to-do's day",
+            description: "Give open tasks another day (or none): postponing, or dating a to-do that had no day.",
+            inputSchema: z.object({
+                tasks: z.array(z.string().min(1).max(500)).min(1).max(20).describe("The tasks' words, as open_tasks shows them."),
+                due: DAY.nullable().describe("The new day, YYYY-MM-DD; null for no day.")
+            }),
+            annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+        }, async ({ tasks: items, due }) => answer(async () => {
+            const { found, missing } = await tasks.setDue(items, due);
+            const moved = found.length ? `${due ? `Now for ${shortDay(due)}` : "Now with no day"}: ${found.join("; ")}.` : "";
+            return [moved, missing.length ? `Not found among the open tasks: ${missing.join("; ")}.` : ""].filter(Boolean).join("\n");
+        }));
+    }
+
+    server.registerTool("read_attachment", {
+        title: "See an attachment",
+        description: "A photo, PDF or other file kept in the vault (what a note embeds as ![[Attachments/…]]): a photo comes back as an image, a PDF or text file as its text.",
+        inputSchema: z.object({
+            path: z.string().min(1).max(300).describe("The file's path, e.g. \"Attachments/2026-11-15 1852 photo.jpg\", or its name as the embed gives it.")
+        }),
+        annotations: { readOnlyHint: true, openWorldHint: false }
+    }, async ({ path }) => {
+        let file: Awaited<ReturnType<Vault["readFile"]>>;
+        try {
+            file = await vault.readFile(path);
+        } catch (error) {
+            if (error instanceof VaultError) {
+                return { ...text(error.message), isError: true };
+            }
+            throw error;
+        }
+        try {
+            return { content: await attachmentContent(file.path, file.bytes) };
+        } catch (error) {
+            // A damaged photo or PDF: said, not a crash.
+            return { ...text(`Could not open ${file.path}: ${(error as Error).message}`), isError: true };
+        }
+    });
 
     const meetings = options.meetings;
     if (meetings) {

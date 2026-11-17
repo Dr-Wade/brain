@@ -5,7 +5,7 @@ import { Logger, type OnApplicationBootstrap } from "@nestjs/common";
 import type { AppConfig } from "../config/app-config.js";
 import type { FetchLike } from "../vault/github.js";
 import type { VaultService } from "../vault/vault.service.js";
-import { DOWNLOAD_LIMIT_BYTES, TelegramBotApi, type TgFile, type TgMessage, type TgUpdate } from "./bot-api.js";
+import { DOWNLOAD_LIMIT_BYTES, TelegramBotApi, type TgCallbackQuery, type TgFile, type TgKeyboard, type TgMessage, type TgUpdate } from "./bot-api.js";
 import { messageMarkdown, messageText, titleForMessage } from "./messages.js";
 import { DeepgramTranscriber, type Transcriber } from "./transcriber.js";
 
@@ -14,15 +14,30 @@ export const APPEND_WINDOW_MS = 30_000;
 /** A message that keeps failing is given up after this many deliveries. */
 const MAX_ATTEMPTS = 3;
 
+/** What the bot says: text, with buttons under it. */
+export type BotReply = string | { text: string; buttons?: TgKeyboard };
+
 export interface TelegramCommand {
     description: string
-    run (args: string): Promise<string>
+    run (args: string): Promise<BotReply>
 }
 
-type Vault = Pick<VaultService, "capture" | "append" | "saveAttachment" | "search" | "inbox">;
+/** A tap on a button whose data starts with the handler's prefix ("due:", "done:"). */
+export type CallbackHandler = (tap: { data: string; text: string; buttons: TgKeyboard }) => Promise<{ toast?: string; edit?: { text: string; buttons?: TgKeyboard } }>;
+
+/**
+ * Sees the words of each message Edward writes or dictates (not forwards,
+ * not photos or files) before it becomes a capture. An answer takes the
+ * message: it is not captured.
+ */
+export type MessageInterceptor = (words: string) => Promise<BotReply | undefined>;
+
+type Vault = Pick<VaultService, "capture" | "append" | "saveAttachment" | "search" | "inbox" | "glossary">;
 
 const HELP = `Send me anything to keep: text, voice notes, photos, files. Forward messages from any chat; forward several at once and they share one note.
-Everything lands in the vault's inbox for Sunday's sort.`;
+Everything lands in the vault's inbox for Sunday's sort.
+
+A to-do: start with « À faire : » or « To-do: », by text or voice, or use /todo. I ask for when, and every morning at 08:00 I send the day's list.`;
 
 /**
  * The Brain bot: whatever Edward sends it becomes an inbox note. Telegram is
@@ -35,6 +50,8 @@ export class TelegramService implements OnApplicationBootstrap {
     private readonly transcriber?: Transcriber;
     private readonly now: () => number;
     private readonly commands = new Map<string, TelegramCommand>();
+    private readonly callbacks = new Map<string, CallbackHandler>();
+    private readonly interceptors: MessageInterceptor[] = [];
     private readonly seen = new Set<number>();
     private readonly failures = new Map<number, number>();
     private last?: { path: string; title: string; at: number };
@@ -68,6 +85,16 @@ export class TelegramService implements OnApplicationBootstrap {
         this.commands.set(name, command);
     }
 
+    /** Button taps whose data is `<prefix>:…`. */
+    registerCallback (prefix: string, handler: CallbackHandler): void {
+        this.callbacks.set(prefix, handler);
+    }
+
+    /** A look at each message before it is captured (tasks: to-dos). */
+    registerInterceptor (interceptor: MessageInterceptor): void {
+        this.interceptors.push(interceptor);
+    }
+
     /** Constant-time check of the secret Telegram sends with every update. */
     acceptsSecret (secret: string | undefined): boolean {
         const expected = this.config.env.TELEGRAM_WEBHOOK_SECRET;
@@ -80,12 +107,12 @@ export class TelegramService implements OnApplicationBootstrap {
     }
 
     /** A message to Edward (the bot's private chat with him). Nothing when unconfigured. */
-    async notifyOwner (text: string): Promise<boolean> {
+    async notifyOwner (text: string, buttons?: TgKeyboard): Promise<boolean> {
         const owner = this.config.env.TELEGRAM_ALLOWED_USER_ID;
         if (!this.api || !owner) {
             return false;
         }
-        await this.api.sendMessage(Number(owner), text);
+        await this.api.sendMessage(Number(owner), text, buttons);
         return true;
     }
 
@@ -100,7 +127,7 @@ export class TelegramService implements OnApplicationBootstrap {
                 url: new URL("/api/telegram/webhook", env.APP_URL).href,
                 secret_token: env.TELEGRAM_WEBHOOK_SECRET!,
                 max_connections: 1,
-                allowed_updates: ["message"]
+                allowed_updates: ["message", "callback_query"]
             });
             await this.api.setMyCommands([...this.commands].map(([command, { description }]) => ({ command, description })));
             this.logger.log("Telegram webhook registered");
@@ -115,6 +142,11 @@ export class TelegramService implements OnApplicationBootstrap {
      */
     async handle (update: TgUpdate): Promise<void> {
         if (this.seen.has(update.update_id)) {
+            return;
+        }
+        if (update.callback_query) {
+            this.markSeen(update.update_id);
+            await this.tap(update.callback_query);
             return;
         }
         const message = update.message;
@@ -152,10 +184,25 @@ export class TelegramService implements OnApplicationBootstrap {
             return;
         }
         const now = this.now();
-        const { attachments, notes, transcript } = await this.saveFiles(message);
+        const file = await this.fetchFile(message);
+        const notes = file?.note ? [file.note] : [];
+        const transcript = file?.audio ? await this.transcribe(file.bytes!, file.audio, notes) : undefined;
         const own = messageText(message);
         // The title comes from the words, never from a remark like "no transcription".
         const words = [transcript, own].filter(Boolean).join("\n\n");
+
+        // Written or dictated words only: a photo or a file is kept, whatever its caption says.
+        if (!message.forward_origin && words && (!file?.bytes || file.audio)) {
+            for (const intercept of this.interceptors) {
+                const answer = await intercept(words);
+                if (answer) {
+                    await this.reply(message, answer);
+                    return;
+                }
+            }
+        }
+
+        const attachments = file?.bytes ? [await this.vault.saveAttachment(file.name, file.bytes)] : [];
         const body = [words, ...notes].filter(Boolean).join("\n\n");
         const markdown = messageMarkdown(message, { body, attachments }, this.config.env.VAULT_TIMEZONE);
 
@@ -171,12 +218,8 @@ export class TelegramService implements OnApplicationBootstrap {
         await this.reply(message, `✅ Inbox: “${saved.title}”`);
     }
 
-    /** Downloads the message's file into Attachments/, and transcribes a voice note. */
-    private async saveFiles (message: TgMessage): Promise<{ attachments: string[]; notes: string[]; transcript?: string }> {
-        const attachments: string[] = [];
-        const notes: string[] = [];
-        let transcript: string | undefined;
-
+    /** The message's file, downloaded; or a remark when it cannot be. */
+    private async fetchFile (message: TgMessage): Promise<{ name: string; bytes?: Uint8Array; audio?: string; note?: string } | undefined> {
         const audio = message.voice ?? message.audio;
         const largestPhoto = message.photo?.at(-1);
         const file: (TgFile & { name: string }) | undefined = audio
@@ -189,38 +232,64 @@ export class TelegramService implements OnApplicationBootstrap {
 
         if (!file) {
             if (message.video || message.video_note || message.sticker) {
-                notes.push(`_(${message.sticker ? "sticker" : "video"} not saved)_`);
+                return { name: "", note: `_(${message.sticker ? "sticker" : "video"} not saved)_` };
             }
-            return { attachments, notes };
+            return undefined;
         }
         if ((file.file_size ?? 0) > DOWNLOAD_LIMIT_BYTES) {
-            notes.push(`_(${file.name} is over 20 MB, too large for a bot to fetch)_`);
-            return { attachments, notes };
+            return { name: file.name, note: `_(${file.name} is over 20 MB, too large for a bot to fetch)_` };
         }
         const info = await this.api!.getFile(file.file_id);
         if (!info.file_path) {
-            notes.push(`_(${file.name} could not be fetched from Telegram)_`);
-            return { attachments, notes };
+            return { name: file.name, note: `_(${file.name} could not be fetched from Telegram)_` };
         }
         const bytes = await this.api!.download(info.file_path);
-        attachments.push(await this.vault.saveAttachment(file.name, bytes));
-
-        if (audio) {
-            if (!this.transcriber) {
-                notes.push("_(voice note: no transcription configured)_");
-            } else {
-                try {
-                    transcript = await this.transcriber.transcribe(bytes, audio.mime_type ?? "audio/ogg") || "_(nothing heard)_";
-                } catch (error) {
-                    this.logger.error(`Transcription failed: ${(error as Error).message}`);
-                    notes.push("_(transcription failed; the audio is attached)_");
-                }
-            }
-        }
-        return { attachments, notes, transcript };
+        return { name: file.name, bytes, audio: audio ? (audio.mime_type ?? "audio/ogg") : undefined };
     }
 
-    private async command (text: string): Promise<string> {
+    /** A voice note's words, with the glossary's names as hints; a remark in `notes` when there are none. */
+    private async transcribe (bytes: Uint8Array, mimeType: string, notes: string[]): Promise<string | undefined> {
+        if (!this.transcriber) {
+            notes.push("_(voice note: no transcription configured)_");
+            return undefined;
+        }
+        const terms = await this.vault.glossary().then(glossary => glossary.terms, () => []);
+        try {
+            return await this.transcriber.transcribe(bytes, mimeType, terms) || "_(nothing heard)_";
+        } catch (error) {
+            this.logger.error(`Transcription failed: ${(error as Error).message}`);
+            notes.push("_(transcription failed; the audio is attached)_");
+            return undefined;
+        }
+    }
+
+    /** A button tap: its handler's answer edits the message; a failure shows as a toast. */
+    private async tap (query: TgCallbackQuery): Promise<void> {
+        if (!this.api || String(query.from.id) !== this.config.env.TELEGRAM_ALLOWED_USER_ID) {
+            return;
+        }
+        const message = query.message;
+        const data = query.data ?? "";
+        const handler = this.callbacks.get(data.split(":", 1)[0]!);
+        if (!handler || !message) {
+            await this.api.answerCallbackQuery(query.id, "This button no longer works.");
+            return;
+        }
+        try {
+            const buttons = (message.reply_markup?.inline_keyboard ?? [])
+                .map(row => row.filter(button => button.callback_data).map(button => ({ text: button.text, data: button.callback_data! })));
+            const result = await handler({ data, text: message.text ?? "", buttons });
+            if (result.edit) {
+                await this.api.editMessageText(message.chat.id, message.message_id, result.edit.text, result.edit.buttons);
+            }
+            await this.api.answerCallbackQuery(query.id, result.toast);
+        } catch (error) {
+            this.logger.error(`Button ${data} failed: ${(error as Error).message}`);
+            await this.api.answerCallbackQuery(query.id, `⚠️ ${(error as Error).message}`.slice(0, 190)).catch(() => undefined);
+        }
+    }
+
+    private async command (text: string): Promise<BotReply> {
         const [head = "", ...rest] = text.slice(1).split(/\s+/);
         const name = head.replace(/@.*$/, "").toLowerCase();
         const args = rest.join(" ").trim();
@@ -253,8 +322,9 @@ export class TelegramService implements OnApplicationBootstrap {
         return hits.map(hit => `• ${hit.title} (${hit.path})\n  ${hit.snippet}`).join("\n\n");
     }
 
-    private async reply (message: TgMessage, text: string): Promise<void> {
-        await this.api?.sendMessage(message.chat.id, text);
+    private async reply (message: TgMessage, answer: BotReply): Promise<void> {
+        const { text, buttons } = typeof answer === "string" ? { text: answer, buttons: undefined } : answer;
+        await this.api?.sendMessage(message.chat.id, text, buttons);
     }
 
     private markSeen (updateId: number): void {

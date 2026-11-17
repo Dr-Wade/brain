@@ -22,14 +22,23 @@ Tools (`services/api/src/mcp/tools.ts`):
 | `read_note` | One note's full text, by path or by title |
 | `list_inbox` | What waits to be sorted |
 | `list_notes` | One folder's notes and subfolders |
-| `open_tasks` | Unticked `- [ ]` lines by note (templates and archive aside) |
+| `open_tasks` | Unticked `- [ ]` lines by note (templates and archive aside); `until` keeps those due by a day |
+| `add_task` | Edward's to-dos into `Tasks.md`, each with its day (`📅 2026-11-18`); Claude asks for when first |
+| `complete_task` | Ticks an open task anywhere by its words (`- [x] … ✅ <today>`) |
+| `reschedule_task` | Gives open tasks another day, or none |
+| `read_attachment` | A file a note embeds: a photo as an image (scaled to fit), a PDF or text file as its text |
 | `create_note` | A new note at a path, frontmatter added; never overwrites |
 | `edit_note` | Exact passages replaced, each found once (whitespace-tolerant); all or none |
 | `append_to_note` | Markdown at the end of a note or of a section by heading |
 | `move_note` | Move or rename, wikilinks following; leaving the inbox, the frontmatter becomes a note's |
 | `delete_note` | Inbox notes only; elsewhere notes move to `Archive/` |
 | `file_for_atlas` | A GitHub issue on a repo in `ISSUE_REPOS`, **never labelled**: Atlas builds anything labelled `ready` |
-| `upcoming_meetings` | The coming meetings from the published calendar, with their prep notes |
+| `upcoming_meetings` | The coming meetings from the published calendars, with their prep notes |
+
+The connector's instructions (`INSTRUCTIONS` in `tools.ts`) end with `Glossary.md`'s list lines
+(`vault/glossary.ts`): the names Edward uses, so Claude spells them right and catches dictation
+errors. They are read from the snapshot on every MCP request, so an edit to the glossary reaches
+the next conversation.
 
 The vault's conventions are enforced in `vault/editing.ts`, not left to the model: paths stay
 Markdown outside hidden folders (so never `.github/workflows`), `Archive/Notion/` is read-only,
@@ -40,11 +49,19 @@ Two more doors into the vault, both in this service:
 
 - **The Brain Telegram bot** (`@drwade_brain_bot`, `telegram/`): anything Edward sends or
   forwards becomes an inbox note (`source: telegram`); voice notes are kept as audio in
-  `Attachments/` and transcribed by Deepgram; forwards arriving within 30 s of the last capture
-  join its note. `/find`, `/inbox`, `/next`. It answers only `TELEGRAM_ALLOWED_USER_ID`, in
-  private.
-- **Meeting prep** (`meetings/`): once a day (`MEETINGS_RUN_AT`), the published calendar
-  (`CALENDAR_ICS_URL`, Outlook's ICS) gives the coming meetings; each one gets
+  `Attachments/` and transcribed by Deepgram, with the glossary's **bold** names as keyterms;
+  forwards arriving within 30 s of the last capture join its note. `/find`, `/inbox`, `/next`,
+  `/todo`, `/today`. It answers only `TELEGRAM_ALLOWED_USER_ID`, in private.
+- **To-dos** (`tasks/`): a message or voice note starting with « À faire », « To-do » or « Tâche »
+  (or `/todo`) becomes lines in `Tasks.md` instead of a capture, in the Obsidian Tasks plugin's
+  format (`- [ ] what 📅 2026-11-18`). The bot asks for when with day buttons, or takes a typed
+  day (« jeudi », « 25/11 », `tasks/when.ts`) within 15 minutes. At `BRIEF_AT` (08:00) it sends
+  the day's meetings, the to-dos due and late (from any note: a meeting action with a 📅 counts),
+  and the inbox count; a ✓ button ticks one. Buttons are stateless: a tap reads the to-dos back
+  from the message's own text, so they keep working across restarts.
+- **Meeting prep** (`meetings/`): once a day (`MEETINGS_RUN_AT`), the published calendars
+  (`CALENDAR_ICS_URL`: Outlook or Google ICS links, separated by spaces or commas) give the
+  coming meetings, a meeting on two calendars counted once; each one gets
   `Meetings/<date> <time> <title>.md` as soon as it is within its rule's days
   (`Meetings/Rules.md`, a table Edward edits), with the previous meeting of the series and its
   open actions. The bot announces each note once, and the day before says how far the prep got.
@@ -85,12 +102,13 @@ Single user. Sign-in is GitHub only, and only for `ALLOWED_GITHUB_ID`
 
 ## Where this departs from the handbook
 
-- **No worker for the webhook or the daily pass.** The handbook sends webhooks and batch jobs
+- **No worker for the webhook or the daily passes.** The handbook sends webhooks and batch jobs
   through BullMQ to a worker. Here Telegram is the queue: the webhook is registered with
   `max_connections: 1` and answers only once the note is saved, so a failure (GitHub down) is a
   500 and Telegram delivers the update again; after three tries the bot says it gave up. The
-  daily pass is a timer in the API, made safe to repeat by `sent_reminders` (one row per pass
-  and per reminder) and by notes being create-only. One user, a few messages a day: a Redis and
+  meeting pass and the morning brief are timers in the API, made safe to repeat by
+  `sent_reminders` (one row per pass, per brief and per reminder) and by notes being
+  create-only. Reading an attachment (scaling a photo, a PDF's text) also happens in the request. One user, a few messages a day: a Redis and
   a second container would cost more than they protect.
 
 ## Gotchas
@@ -126,7 +144,12 @@ Single user. Sign-in is GitHub only, and only for `ALLOWED_GITHUB_ID`
 - **Outlook's published feed is slow and sometimes hangs** (100 s to the first byte seen, and
   hours of connection failures on 13 Nov 2026): the fetch has a 3-minute timeout, and a failed
   pass logs fetch's `cause` (the reason) and runs again at the next tick.
-- **The calendar link and the bot token are secrets**: anyone holding the ICS link reads the
+- **A tool result in Claude holds about 150,000 characters, a base64 image included**: a photo
+  is scaled down (1568 px, then smaller) until its JPEG fits 110,000 characters. sharp needs its
+  musl binary on Alpine; the Dockerfile's last check loads it.
+- **Attachments are not in the tarball** (`export-ignore` in the vault's `.gitattributes`):
+  `read_attachment` fetches the one file through the contents API (raw media type).
+- **The calendar links and the bot token are secrets**: anyone holding the ICS link reads the
   calendar. Neither is ever logged (errors give the status, not the URL).
 - **A moved meeting gets a new prep note** (the path holds the date); the old one stays.
 

@@ -5,6 +5,8 @@ import { z } from "zod";
 // `${VAR:-}` through as "", and Zod applies `.default()` only to undefined.
 const unsetIfEmpty = <T extends z.ZodType>(schema: T) => z.preprocess(v => (v === "" ? undefined : v), schema);
 const optional = unsetIfEmpty(z.string().optional());
+const splitUrls = (value: string) => value.split(/[\s,]+/).filter(Boolean);
+const isUrl = (value: string) => z.url().safeParse(value).success;
 
 const EnvSchema = z.object({
     NODE_ENV: unsetIfEmpty(z.enum(["development", "test", "production"]).default("development")),
@@ -42,10 +44,13 @@ const EnvSchema = z.object({
     DEEPGRAM_MODEL: unsetIfEmpty(z.string().default("nova-3")),
     // "multi": French and English, switching mid-sentence.
     DEEPGRAM_LANGUAGE: unsetIfEmpty(z.string().default("multi")),
-    // The published calendar (an ICS link) that meeting prep notes come
-    // from, and when, in VAULT_TIMEZONE, the daily pass runs.
-    CALENDAR_ICS_URL: unsetIfEmpty(z.url().optional()),
+    // The published calendars (ICS links, separated by spaces or commas) that
+    // meeting prep notes come from, and when, in VAULT_TIMEZONE, the daily
+    // pass runs.
+    CALENDAR_ICS_URL: unsetIfEmpty(z.string().refine(value => splitUrls(value).every(isUrl), "one or more URLs, separated by spaces or commas").optional()),
     MEETINGS_RUN_AT: unsetIfEmpty(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "HH:MM").default("07:00")),
+    // When, in VAULT_TIMEZONE, the bot sends the day's meetings and to-dos.
+    BRIEF_AT: unsetIfEmpty(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "HH:MM").default("08:00")),
     SENTRY_DSN: optional,
     SENTRY_CLIENT_DSN: optional
 }).superRefine((env, ctx) => {
@@ -63,6 +68,11 @@ const EnvSchema = z.object({
 /** The repos named in ISSUE_REPOS, trimmed, without empties. */
 export function issueRepos (env: Pick<Env, "ISSUE_REPOS">): string[] {
     return (env.ISSUE_REPOS ?? "").split(",").map(repo => repo.trim()).filter(Boolean);
+}
+
+/** The calendar links in CALENDAR_ICS_URL. */
+export function calendarUrls (env: Pick<Env, "CALENDAR_ICS_URL">): string[] {
+    return splitUrls(env.CALENDAR_ICS_URL ?? "");
 }
 
 export type Env = z.infer<typeof EnvSchema>;

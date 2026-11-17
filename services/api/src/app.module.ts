@@ -11,6 +11,7 @@ import { HealthModule } from "./health/health.module.js";
 import { McpModule } from "./mcp/mcp.module.js";
 import { MeetingsModule } from "./meetings/meetings.module.js";
 import { PrismaModule } from "./prisma/prisma.service.js";
+import { TasksModule } from "./tasks/tasks.module.js";
 import { TelegramModule } from "./telegram/telegram.module.js";
 
 @Module({
@@ -30,7 +31,8 @@ import { TelegramModule } from "./telegram/telegram.module.js";
         ClientConfigModule,
         McpModule,
         TelegramModule,
-        MeetingsModule
+        MeetingsModule,
+        TasksModule
     ],
     providers: [{ provide: APP_FILTER, useClass: SentryGlobalFilter }]
 })

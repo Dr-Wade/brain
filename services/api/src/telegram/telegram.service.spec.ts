@@ -16,7 +16,9 @@ const env = {
 
 /** Telegram's Bot API, recording what the bot says and serving files. */
 function fakeTelegram (files: Record<string, { path: string; bytes: string; size?: number }> = {}) {
-    const sent: { chat: number; text: string }[] = [];
+    const sent: { chat: number; text: string; buttons?: unknown }[] = [];
+    const edits: { message: number; text: string; buttons?: unknown }[] = [];
+    const toasts: (string | undefined)[] = [];
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
         const method = url.split("/").pop()!;
         const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : {};
@@ -25,7 +27,16 @@ function fakeTelegram (files: Record<string, { path: string; bytes: string; size
             return new Response(file?.bytes ?? "", { status: file ? 200 : 404 });
         }
         if (method === "sendMessage") {
-            sent.push({ chat: body.chat_id as number, text: body.text as string });
+            const markup = body.reply_markup as { inline_keyboard: unknown } | undefined;
+            sent.push({ chat: body.chat_id as number, text: body.text as string, ...(markup ? { buttons: markup.inline_keyboard } : {}) });
+            return Response.json({ ok: true, result: { message_id: 900 + sent.length, date: 0, chat: { id: body.chat_id, type: "private" } } });
+        }
+        if (method === "editMessageText") {
+            const markup = body.reply_markup as { inline_keyboard: unknown };
+            edits.push({ message: body.message_id as number, text: body.text as string, buttons: markup.inline_keyboard });
+        }
+        if (method === "answerCallbackQuery") {
+            toasts.push(body.text as string | undefined);
         }
         if (method === "getFile") {
             const file = files[body.file_id as string];
@@ -33,7 +44,7 @@ function fakeTelegram (files: Record<string, { path: string; bytes: string; size
         }
         return Response.json({ ok: true, result: true });
     });
-    return { sent, fetchImpl };
+    return { sent, edits, toasts, fetchImpl };
 }
 
 function fakeVault () {
@@ -43,7 +54,8 @@ function fakeVault () {
         append: vi.fn(async (path: string) => ({ path })),
         saveAttachment: vi.fn(async (name: string) => `Attachments/2026-11-11 1402 ${name}`),
         search: vi.fn(async () => [{ path: "Notes/Paiements.md", title: "Paiements", snippet: "Suivi des paiements", score: 6 }]),
-        inbox: vi.fn(async () => [{ path: "Inbox/a.md", title: "A", preview: "" }])
+        inbox: vi.fn(async () => [{ path: "Inbox/a.md", title: "A", preview: "" }]),
+        glossary: vi.fn(async () => ({ lines: ["**Memento IT**: ma structure"], terms: ["Memento IT"] }))
     };
 }
 
@@ -104,7 +116,8 @@ describe("TelegramService", () => {
         const { vault, send, transcriber } = setup({ files: { v1: { path: "voice/file_1.oga", bytes: "OGG" } }, transcript: "Penser à réserver la salle" });
         await send({ voice: { file_id: "v1", duration: 4, mime_type: "audio/ogg" } });
         expect(vault.saveAttachment).toHaveBeenCalledWith("voice.ogg", new Uint8Array(Buffer.from("OGG")));
-        expect(transcriber?.transcribe).toHaveBeenCalledWith(expect.any(Uint8Array), "audio/ogg");
+        // The glossary's names go to the transcription as keyterms.
+        expect(transcriber?.transcribe).toHaveBeenCalledWith(expect.any(Uint8Array), "audio/ogg", ["Memento IT"]);
         expect(vault.capture).toHaveBeenCalledWith({
             text: "Penser à réserver la salle\n\n![[Attachments/2026-11-11 1402 voice.ogg]]",
             title: "Penser à réserver la salle",
@@ -162,6 +175,50 @@ describe("TelegramService", () => {
         expect(telegram.sent.at(-1)?.text).toBe("⚠️ Gave up on this message after 3 tries: GitHub is down");
         await send({ text: "x" }, 7);
         expect(vault.capture).toHaveBeenCalledTimes(3);
+    });
+
+    it("lets a registered interceptor take written or dictated words, never a photo", async () => {
+        const { service, vault, telegram, send } = setup({ files: { v1: { path: "voice/file_1.oga", bytes: "OGG" }, p1: { path: "photos/p.jpg", bytes: "JPG" } }, transcript: "À faire : appeler Jean" });
+        const seen: string[] = [];
+        service.registerInterceptor(async words => {
+            seen.push(words);
+            return /^À faire/.test(words) ? { text: "📝 To-do", buttons: [[{ text: "Today", data: "due:2026-11-11" }]] } : undefined;
+        });
+        await send({ text: "À faire : réserver la salle" });
+        expect(telegram.sent.at(-1)).toEqual({ chat: OWNER, text: "📝 To-do", buttons: [[{ text: "Today", callback_data: "due:2026-11-11" }]] });
+        await send({ voice: { file_id: "v1", duration: 3 } });
+        // Taken: the audio is not kept, nothing goes to the inbox.
+        expect(vault.saveAttachment).not.toHaveBeenCalled();
+        expect(vault.capture).not.toHaveBeenCalled();
+        await send({ caption: "À faire : imprimer", photo: [{ file_id: "p1", width: 10, height: 10 }] });
+        await send({ text: "Une idée" });
+        expect(seen).toEqual(["À faire : réserver la salle", "À faire : appeler Jean", "Une idée"]);
+        expect(vault.capture).toHaveBeenCalledTimes(2);
+    });
+
+    it("hands a button tap to its handler, edits the message, and ignores strangers", async () => {
+        const { service, telegram } = setup();
+        const handler = vi.fn(async (tap: { data: string; text: string; buttons: unknown }) => ({ toast: "Done ✓", edit: { text: `${tap.text}!`, buttons: [] } }));
+        service.registerCallback("done", handler);
+        const tap = (from: number, data: string, updateId: number) => service.handle({
+            update_id: updateId,
+            callback_query: {
+                id: `q${updateId}`,
+                from: { id: from, first_name: "X" },
+                data,
+                message: { message_id: 55, date: 0, chat: { id: OWNER, type: "private" }, text: "1. Faire la facturation", reply_markup: { inline_keyboard: [[{ text: "✓ 1", callback_data: "done:1" }]] } }
+            }
+        });
+        await tap(9, "done:1", 1);
+        expect(handler).not.toHaveBeenCalled();
+        await tap(OWNER, "done:1", 2);
+        expect(handler).toHaveBeenCalledWith({ data: "done:1", text: "1. Faire la facturation", buttons: [[{ text: "✓ 1", data: "done:1" }]] });
+        expect(telegram.edits).toEqual([{ message: 55, text: "1. Faire la facturation!", buttons: [] }]);
+        expect(telegram.toasts).toEqual(["Done ✓"]);
+        handler.mockRejectedValueOnce(new Error("GitHub is down"));
+        await tap(OWNER, "done:1", 3);
+        await tap(OWNER, "gone:1", 4);
+        expect(telegram.toasts.slice(1)).toEqual(["⚠️ GitHub is down", "This button no longer works."]);
     });
 
     it("checks the webhook secret, and tells the owner", async () => {

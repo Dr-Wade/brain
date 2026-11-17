@@ -12,6 +12,9 @@ import { mcpResource, type Auth } from "../auth/auth.module.js";
 import { AppConfig, issueRepos } from "../config/app-config.js";
 import { MeetingsModule } from "../meetings/meetings.module.js";
 import { MeetingsService } from "../meetings/meetings.service.js";
+import { TasksModule } from "../tasks/tasks.module.js";
+import { TasksService } from "../tasks/tasks.service.js";
+import { glossaryInstructions } from "../vault/glossary.js";
 import { VaultModule } from "../vault/vault.module.js";
 import { VaultService } from "../vault/vault.service.js";
 import { createVaultMcpServer } from "./tools.js";
@@ -29,12 +32,20 @@ export class McpEndpoint {
         @Inject(AppConfig) private readonly config: AppConfig,
         @Inject(AuthService) private readonly auth: AuthService<Auth>,
         @Inject(VaultService) private readonly vault: VaultService,
-        @Inject(MeetingsService) private readonly meetings: MeetingsService
+        @Inject(MeetingsService) private readonly meetings: MeetingsService,
+        @Inject(TasksService) private readonly tasks: TasksService
     ) {}
 
-    handle (request: Request): Promise<Response> {
+    /** The glossary, as the last request found it: the instructions carry it. */
+    private glossary = "";
+
+    async handle (request: Request): Promise<Response> {
         this.handler ??= this.build();
-        return this.handler(request);
+        if (this.vault.configured) {
+            // From the cached snapshot; a vault that cannot be read leaves the last one.
+            this.glossary = await this.vault.glossary().then(glossaryInstructions, () => this.glossary);
+        }
+        return await this.handler(request);
     }
 
     private build () {
@@ -42,9 +53,10 @@ export class McpEndpoint {
         const options = {
             issueRepos: env.ISSUE_TOKEN ? issueRepos(env) : [],
             version: env.APP_VERSION,
-            meetings: this.meetings.configured ? this.meetings : undefined
+            meetings: this.meetings.configured ? this.meetings : undefined,
+            tasks: this.tasks
         };
-        const mcp = createMcpHandler(() => createVaultMcpServer(this.vault, options));
+        const mcp = createMcpHandler(() => createVaultMcpServer(this.vault, { ...options, glossary: this.glossary }));
         return requireMcpAuth(this.auth.instance, request => mcp.fetch(request), { resource: mcpResource(env) });
     }
 }
@@ -97,7 +109,7 @@ export function toFetchRequest (req: ExpressRequest, appUrl: string): Request {
 }
 
 @Module({
-    imports: [VaultModule, MeetingsModule],
+    imports: [VaultModule, MeetingsModule, TasksModule],
     controllers: [McpController],
     providers: [McpEndpoint]
 })

@@ -1,7 +1,8 @@
 import type { FetchLike } from "../vault/github.js";
 
 export interface Transcriber {
-    transcribe (audio: Uint8Array, mimeType: string): Promise<string>
+    /** `keyterms`: names to listen for (the glossary's), spelled as they should come out. */
+    transcribe (audio: Uint8Array, mimeType: string, keyterms?: string[]): Promise<string>
 }
 
 /** Deepgram's pre-recorded API: one request, the transcript back. */
@@ -11,14 +12,19 @@ export class DeepgramTranscriber implements Transcriber {
         private readonly fetchImpl: FetchLike = fetch
     ) {}
 
-    async transcribe (audio: Uint8Array, mimeType: string): Promise<string> {
+    async transcribe (audio: Uint8Array, mimeType: string, keyterms: string[] = []): Promise<string> {
         const url = new URL("/v1/listen", this.options.url);
-        url.search = new URLSearchParams({
+        const params = new URLSearchParams({
             model: this.options.model,
             language: this.options.language,
             smart_format: "true",
             punctuate: "true"
-        }).toString();
+        });
+        // Keyterm prompting (Nova-3, multilingual too): one parameter per term.
+        for (const term of keyterms) {
+            params.append("keyterm", term);
+        }
+        url.search = params.toString();
         const response = await this.fetchImpl(url.href, {
             method: "POST",
             headers: { "Authorization": `Token ${this.options.apiKey}`, "Content-Type": mimeType },

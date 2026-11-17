@@ -133,6 +133,7 @@ const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/
 
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s/;
+const TABLE_ROW = /^\s*\|/;
 const FENCE = /^\s*(?:```|~~~)/;
 const FRONTMATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/;
 
@@ -159,7 +160,8 @@ function headings (lines: string[]): ({ level: number; text: string } | undefine
 /**
  * Adds Markdown at the end of the note, or at the end of the section under
  * `heading` (before the next heading of the same or a higher level). A list
- * item added after a list item joins the list; anything else gets a blank line.
+ * item added after a list item joins the list, a table row after a table row
+ * the table; anything else gets a blank line.
  */
 export function appendText (content: string, markdown: string, heading?: string): string {
     const addition = markdown.replace(/^\n+/, "").replace(/\s+$/, "");
@@ -197,7 +199,8 @@ function joinBlocks (before: string, addition: string): string {
     }
     const lastLine = before.slice(before.lastIndexOf("\n") + 1);
     const firstLine = addition.split("\n", 1)[0] ?? "";
-    return `${before}${LIST_ITEM.test(lastLine) && LIST_ITEM.test(firstLine) ? "\n" : "\n\n"}${addition}`;
+    const continues = (LIST_ITEM.test(lastLine) && LIST_ITEM.test(firstLine)) || (TABLE_ROW.test(lastLine) && TABLE_ROW.test(firstLine));
+    return `${before}${continues ? "\n" : "\n\n"}${addition}`;
 }
 
 /**
